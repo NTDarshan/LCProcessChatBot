@@ -1,0 +1,130 @@
+<aside class="right-panel">
+
+  <!-- ── LC Details ─────────────────────────────────────────────────────── -->
+  <div class="panel-card">
+    <div class="card-header">
+      <span class="card-title">LC Details</span>
+      <span class="card-subtitle">Latest result</span>
+    </div>
+
+    @if (firstRow()) {
+      <div class="lc-header">
+        <div>
+          <div class="field-label">LC / Contract No.</div>
+          <div class="field-value bold">{{ firstRow()!['lc_number'] ?? firstRow()!['LcId'] ?? '—' }}</div>
+        </div>
+        <span class="status-badge active">{{ firstRow()!['application_status'] ?? '—' }}</span>
+      </div>
+
+      <div class="lc-grid">
+        <div>
+          <div class="field-label">Applicant</div>
+          <div class="field-value">{{ firstRow()!['applicant_name'] ?? '—' }}</div>
+        </div>
+        <div>
+          <div class="field-label">Bank</div>
+          <div class="field-value">{{ firstRow()!['Bank'] ?? '—' }}</div>
+        </div>
+        <div>
+          <div class="field-label">Amount</div>
+          <div class="field-value bold">{{ firstRow()!['lc_amount'] ?? firstRow()!['TotalValue'] ?? '—' }} {{ firstRow()!['currency'] ?? '' }}</div>
+        </div>
+        <div>
+          <div class="field-label">Created</div>
+          <div class="field-value">{{ firstRow()!['created_date'] ? ($any(firstRow()!['created_date']) | date:'dd MMM yyyy') : '—' }}</div>
+        </div>
+        <div class="full-col">
+          <div class="field-label">Expiry / Shipment</div>
+          <div class="field-value">{{ firstRow()!['expiry_date'] ? ($any(firstRow()!['expiry_date']) | date:'dd MMM yyyy') : '—' }}</div>
+        </div>
+      </div>
+    } @else {
+      <div class="no-data-msg">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <span>Ask a question to see LC details</span>
+      </div>
+    }
+  </div>
+
+  <!-- ── Key Insights ────────────────────────────────────────────────────── -->
+  <div class="panel-card">
+    <div class="card-header">
+      <span class="card-title">Key Insights</span>
+    </div>
+
+    <div class="insights-list">
+      @for (insight of insights(); track insight.label) {
+        <div class="insight-item">
+          <div class="insight-icon" [style.background]="insight.color + '18'">
+            @switch (insight.icon) {
+              @case ('clock') {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" [style.stroke]="insight.color" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12,6 12,12 16,14"/>
+                </svg>
+              }
+              @case ('currency') {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" [style.stroke]="insight.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 10h12" />
+                  <path d="M4 14h9" />
+                  <path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2" />
+                </svg>
+              }
+            }
+          </div>
+          <div class="insight-body">
+            <div class="insight-label">{{ insight.label }}</div>
+            <div class="insight-value">{{ insight.value }}</div>
+            <div class="insight-trend"
+                 [class.up]="insight.trend === 'up'"
+                 [class.down]="insight.trend === 'down'">
+              {{ insight.trend === 'up' ? '↑' : '↓' }} {{ insight.trendPercent }}%
+              <span class="trend-note">vs last 7 days</span>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- ── Quick Actions ───────────────────────────────────────────────────── -->
+  <div class="panel-card">
+    <div class="card-header">
+      <span class="card-title">Quick Actions</span>
+    </div>
+    <div class="actions-grid">
+      @for (action of quickActions; track action.label) {
+        <button class="action-btn">
+          <div class="action-icon">
+            @switch (action.icon) {
+              @case ('new') {
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                  <path d="M12 10v6M9 13h6"/>
+                </svg>
+              }
+              @case ('upload') {
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17,8 12,3 7,8"/>
+                  <line x1="12" x2="12" y1="3" y2="15"/>
+                </svg>
+              }
+              @case ('help') {
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" x2="12.01" y1="17" y2="17"/>
+                </svg>
+              }
+            }
+          </div>
+          <span class="action-label">{{ action.label }}</span>
+        </button>
+      }
+    </div>
+  </div>
+
+</aside>

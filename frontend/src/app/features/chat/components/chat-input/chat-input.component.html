@@ -1,0 +1,40 @@
+@let isDisconnected = store.connectionStatus() === 'disconnected';
+
+<div class="input-shell">
+
+  <!-- Text box row -->
+  <div class="input-box" [class.disconnected]="isDisconnected">
+    <textarea
+      #textArea
+      rows="1"
+      [(ngModel)]="inputText"
+      placeholder="Ask about status, invoices, or delays..."
+      [disabled]="isDisconnected"
+      (keydown.enter)="onEnter($event)"
+      (input)="autoResize()"
+      class="chat-textarea"
+    ></textarea>
+
+    <div class="btn-group">
+      <button
+        class="send-btn"
+        [disabled]="!inputText().trim() || isDisconnected || isTyping()"
+        (click)="send()"
+        title="Send message"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+        </svg>
+      </button>
+
+      @if (isTyping()) {
+        <button class="stop-btn" (click)="stop()" title="Stop generating">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
+      }
+    </div>
+  </div>
+
+</div>

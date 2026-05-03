@@ -1,0 +1,192 @@
+@let msg = message();
+
+@if (!shouldHideStreamingPlaceholder) {
+<div class="msg-row" [class.user-row]="msg.role === 'user'" [class.ai-row]="msg.role === 'assistant'">
+
+  <!-- AI avatar (left) -->
+  @if (msg.role === 'assistant') {
+    <div class="ai-avatar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L13.09 8.26L19 7L14.74 11.74L21 13L14.74 14.26L19 19L13.09 15.74L12 22L10.91 15.74L5 19L9.26 14.26L3 13L9.26 11.74L5 7L10.91 8.26L12 2Z" fill="currentColor"/>
+      </svg>
+    </div>
+  }
+
+  <!-- Bubble column -->
+  <div class="bubble-col">
+    <div class="bubble"
+         [class.user-bubble]="msg.role === 'user'"
+         [class.ai-bubble]="msg.role === 'assistant'"
+         [class.error-bubble]="msg.error">
+
+      <p class="content">{{ msg.content }}</p>
+
+      @if (msg.error) {
+        <button class="retry-btn" (click)="onRetry.emit()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          Retry
+        </button>
+      }
+
+      <!-- ── Smart data widget ──────────────────────────────────────── -->
+      @if (msg.role === 'assistant') {
+
+        @if (isEmptyResult) {
+          <app-lc-empty-state [intent]="msg.intent ?? ''" />
+
+        } @else if (rows.length > 0) {
+
+          @switch (effectiveResponseType) {
+
+
+            @case ('metric_cards') {
+              @if (msg.intent === 'StatusBreakdown') {
+                <app-lc-status-chart [data]="rows" />
+              } @else if (msg.intent === 'CustomerLC') {
+                <app-lc-customer-chart [data]="rows" />
+              } @else {
+                <app-lc-metric-cards [data]="rows" [intent]="msg.intent ?? ''" [chartType]="msg.chartType ?? null" />
+              }
+            }
+
+            @case ('bank_chart') {
+              <app-lc-bank-chart [data]="rows" />
+            }
+
+            @case ('timeline') {
+              <app-lc-timeline-filtered [data]="rows" />
+            }
+
+            @case ('detail_card') {
+              <app-lc-detail-card [data]="rows[0]" />
+            }
+
+            @case ('invoice_breakdown') {
+              <app-lc-invoice-breakdown [data]="rows" />
+            }
+
+            @case ('comparison') {
+              <app-lc-comparison [data]="rows" [intent]="msg.intent ?? ''" />
+            }
+
+            @case ('line_chart') {
+              <app-lc-line-chart [data]="rows" [intent]="msg.intent" [queryType]="msg.queryType ?? undefined" />
+            }
+
+            @case ('area_chart') {
+              <app-lc-area-chart [data]="rows" />
+            }
+
+            @case ('radar_chart') {
+              <app-lc-radar-chart [data]="rows" />
+            }
+
+            @case ('scatter_chart') {
+              <app-lc-scatter-chart [data]="rows" />
+            }
+
+            @case ('bubble_chart') {
+              <app-lc-bubble-chart [data]="rows" />
+            }
+
+            @case ('polar_chart') {
+              <app-lc-polar-chart [data]="rows" />
+            }
+
+            @case ('mixed_chart') {
+              <app-lc-mixed-chart [data]="rows" />
+            }
+
+            @case ('risk_scorecard') {
+              <app-lc-risk-scorecard [data]="rows" />
+            }
+
+            @case ('kpi_strip') {
+              <app-lc-kpi-strip [data]="rows" />
+            }
+
+            @case ('expiry_heatmap') {
+              <app-lc-expiry-heatmap [data]="rows" />
+            }
+
+            @default {
+              <app-lc-table [data]="rows" [intent]="msg.intent ?? ''" />
+            }
+
+          }
+
+          @if (followUpChips.length > 0) {
+            <div class="followup-chips">
+              @for (chip of followUpChips; track chip) {
+                <button class="chip-btn" (click)="sendFollowUp(chip)">{{ chip }}</button>
+              }
+            </div>
+          }
+        }
+      }
+
+      <!-- ── View Query panel ───────────────────────────────────────── -->
+      @if (msg.role === 'assistant' && msg.executedQuery) {
+        <div class="query-toggle">
+          <button (click)="toggleQuery()" [attr.aria-expanded]="queryVisible()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline [attr.points]="queryVisible() ? '18 15 12 9 6 15' : '6 9 12 15 18 9'"/>
+            </svg>
+            {{ queryVisible() ? 'Hide Query' : 'View Query' }}
+          </button>
+          @if (msg.isTextToSql) {
+            <span class="ai-sql-badge">AI-generated SQL</span>
+          }
+        </div>
+
+        @if (queryVisible()) {
+          <div class="query-box" role="region" aria-label="Executed SQL query">
+            <div class="query-box-header">
+              <div class="header-left">
+                <span>SQL</span>
+                <span class="query-badge">Resolved</span>
+              </div>
+              <button class="copy-btn" (click)="copyQuery()" [class.copied]="copied()" title="Copy to clipboard">
+                @if (copied()) {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <span>Copied!</span>
+                } @else {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>Copy</span>
+                }
+              </button>
+            </div>
+            <pre class="query-pre">{{ msg.executedQuery }}</pre>
+          </div>
+        }
+      }
+    </div>
+
+    <div class="meta">
+      <span class="time">{{ formatTime(msg.timestamp) }}</span>
+      @if (msg.role === 'user') {
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="#4f46e5">
+          <path d="M20 6L9 17l-5-5"/>
+        </svg>
+      }
+    </div>
+  </div>
+
+  <!-- User avatar (right) -->
+  @if (msg.role === 'user') {
+    <div class="user-avatar">
+      <span>{{ userInitials() }}</span>
+    </div>
+  }
+
+</div>
+}

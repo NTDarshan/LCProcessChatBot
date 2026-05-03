@@ -1,0 +1,71 @@
+<div class="landing-container">
+  <div class="orb orb-top-right" aria-hidden="true"></div>
+  <div class="orb orb-left" aria-hidden="true"></div>
+  <div class="orb orb-bottom-right" aria-hidden="true"></div>
+
+  <main class="hero-shell">
+    @if (checkingAuth()) {
+      <section class="status-panel" aria-live="polite">
+        <div class="brand-mark1">
+          <!-- <span class="brand-mark__curve brand-mark__curve--left"></span>
+          <span class="brand-mark__curve brand-mark__curve--right"></span> -->
+          <img src="/mi/assets/icons/logo.png" alt="ArcelorMittal" class="brand-logo" />
+        </div>
+        <div class="loading-spinner">
+          <div class="spinner"></div>
+          <p>Checking your session...</p>
+        </div>
+      </section>
+    } @else {
+      <section class="content-wrapper">
+        <div class="brand-mark1" aria-hidden="true">
+          <!-- <span class="brand-mark__curve brand-mark__curve--left"></span>
+          <span class="brand-mark__curve brand-mark__curve--right"></span> -->
+          <img src="/mi/assets/icons/logo.png" alt="ArcelorMittal" class="brand-logo" />
+        </div>
+
+        <h1 class="main-title">LC Navigator</h1>
+
+        <p class="subtitle">
+          Navigate letters of credit with confidence and precision
+        </p>
+
+        <button class="login-button" type="button" (click)="login()" [disabled]="disabled()">
+          <span>Sign in with ArcelorMittal Account</span>
+          <svg class="button-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            <path
+              d="M13 6l6 6-6 6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            ></path>
+          </svg>
+        </button>
+
+        @if (loading()) {
+          <div class="loading-spinner" aria-live="polite">
+            <div class="spinner"></div>
+            <p>Authenticating...</p>
+          </div>
+        }
+
+        @if (error()) {
+          <div class="error-message" aria-live="assertive">
+            <svg viewBox="0 0 24 24" fill="currentColor" class="error-icon" aria-hidden="true">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+              />
+            </svg>
+            <span>{{ error() }}</span>
+          </div>
+        }
+      </section>
+    }
+  </main>
+
+  <footer class="footer">
+    <p>Powered by ArcelorMittal International • Secure authentication via Microsoft Azure</p>
+  </footer>
+</div>

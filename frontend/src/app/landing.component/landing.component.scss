@@ -1,0 +1,272 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.landing-container {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  overflow: hidden;
+  color: #1f3f68;
+}
+
+.hero-shell {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 90px 24px 90px;
+}
+
+.content-wrapper,
+.status-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 760px);
+  text-align: center;
+}
+
+.brand-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 42px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow:
+    0 8px 24px rgba(31, 63, 104, 0.14),
+    0 2px 6px rgba(31, 63, 104, 0.08);
+}
+
+.brand-mark__curve {
+  position: absolute;
+  width: 22px;
+  height: 11px;
+  border-top: 4px solid #f04e23;
+  top: 28px;
+}
+
+.brand-mark__curve--left {
+  left: 10px;
+  border-radius: 18px 18px 0 0;
+  transform: rotate(-14deg);
+}
+
+.brand-mark__curve--right {
+  right: 10px;
+  border-radius: 18px 18px 0 0;
+  transform: rotate(14deg);
+}
+
+.main-title {
+  margin: 0;
+  font-size: clamp(2rem, 3vw, 3rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+  color: #184a84;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin: 22px auto 34px;
+  font-size: clamp(1rem, 1.2vw, 1.2rem);
+  line-height: 1.6;
+  color: #7588a6;
+}
+
+.login-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 284px;
+  min-height: 56px;
+  padding: 16px 28px;
+  border: 0;
+  border-radius: 4px;
+  background: #0f4c8a;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(15, 76, 138, 0.18);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: #0d4378;
+    transform: translateY(-1px);
+    box-shadow: 0 14px 26px rgba(15, 76, 138, 0.2);
+  }
+
+  &:focus-visible {
+    outline: 3px solid rgba(15, 76, 138, 0.24);
+    outline-offset: 4px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+}
+
+.button-arrow {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.loading-spinner {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #6d7f9a;
+
+  p {
+    margin: 0;
+    font-size: 0.95rem;
+  }
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(15, 76, 138, 0.16);
+  border-top-color: #0f4c8a;
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+}
+
+.error-message {
+  width: min(100%, 520px);
+  margin: 22px auto 0;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 12px;
+  background: #fff4f2;
+  border: 1px solid #f6c8bd;
+  color: #ba3a1a;
+  font-size: 0.95rem;
+}
+
+.error-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10;
+  padding: 24px 20px;
+  background: transparent;
+  text-align: center;
+  color: #8fa0b5;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+
+  p {
+    margin: 0;
+  }
+}
+
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  background: #edf4fb;
+  pointer-events: none;
+}
+
+.orb-top-right {
+  width: 320px;
+  height: 320px;
+  top: -90px;
+  right: -70px;
+}
+
+.orb-left {
+  width: 260px;
+  height: 260px;
+  left: -110px;
+  top: 55%;
+  transform: translateY(-50%);
+}
+
+.orb-bottom-right {
+  width: 230px;
+  height: 230px;
+  right: 23%;
+  bottom: 74px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-shell {
+    padding: 32px 20px 128px;
+  }
+
+  .brand-mark {
+    margin-bottom: 34px;
+  }
+
+  .subtitle {
+    margin-bottom: 28px;
+  }
+
+  .orb-top-right {
+    width: 220px;
+    height: 220px;
+    top: -60px;
+    right: -60px;
+  }
+
+  .orb-left {
+    width: 180px;
+    height: 180px;
+    left: -90px;
+  }
+
+  .orb-bottom-right {
+    width: 170px;
+    height: 170px;
+    right: -30px;
+    bottom: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-shell {
+    padding-bottom: 116px;
+  }
+
+  .login-button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 20px;
+    font-size: 0.95rem;
+  }
+
+  .footer {
+    font-size: 0.85rem;
+  }
+}

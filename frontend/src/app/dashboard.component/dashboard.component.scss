@@ -1,0 +1,24 @@
+:host {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-layout {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f8fafc;
+  transition: all 0.25s ease;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;        /* critical: prevents flex blowout */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}

@@ -1,0 +1,63 @@
+<div class="typing-wrapper">
+  <div class="ai-badge" aria-hidden="true">
+    <span class="ai-badge__ring"></span>
+    <span class="ai-badge__core">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path
+          d="M12 3L13.9 8.1L19 10L13.9 11.9L12 17L10.1 11.9L5 10L10.1 8.1L12 3Z"
+          fill="currentColor"
+        />
+        <path
+          d="M18.2 4.8L18.8 6.2L20.2 6.8L18.8 7.4L18.2 8.8L17.6 7.4L16.2 6.8L17.6 6.2L18.2 4.8Z"
+          fill="currentColor"
+        />
+      </svg>
+    </span>
+  </div>
+  <div class="typing-bubble">
+    <button class="summary" type="button" (click)="toggleCollapse()">
+      <div class="summary-left">
+        <div class="title-with-dots">
+          <span class="summary-title">{{ liveLabel() }}</span>
+          <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+        <span class="summary-meta">{{ currentStage() }}</span>
+      </div>
+      <span class="summary-caret">{{ isCollapsed() ? 'Show details' : 'Hide details' }}</span>
+    </button>
+
+    @if (!isCollapsed()) {
+      <div class="stage-list">
+        @for (stage of stages(); track trackByStage($index, stage)) {
+          <div class="stage-row" [class.failed]="stage.status === 'failed'">
+            <div class="stage-header">
+              <span class="stage-icon" 
+                    [class.success]="stage.status === 'completed'" 
+                    [class.error]="stage.status === 'failed'" 
+                    [class.processing]="stage.status === 'in_progress' || !stage.status">
+                @if (stage.status === 'completed') {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                } @else if (stage.status === 'failed') {
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                } @else {
+                  <div class="spinner"></div>
+                }
+              </span>
+              <span class="stage-name">{{ stage.stageName }}</span>
+            </div>
+
+            @if (stage.errorMessage) {
+              <div class="stage-details">
+                <div class="detail-row detail-error">{{ stage.errorMessage }}</div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

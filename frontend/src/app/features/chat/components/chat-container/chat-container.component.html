@@ -1,0 +1,79 @@
+<div class="chat-shell">
+
+  <!-- ── Header ────────────────────────────────────────────────────────────── -->
+  <div class="chat-header">
+    <div class="header-left">
+      <h2 class="chat-title">LC Process Intelligence</h2>
+      <p class="chat-subtitle">AI assistant for trade finance operations</p>
+    </div>
+    <div class="header-right">
+      <div
+        class="connection-badge"
+        [class.connected]="store.connectionStatus() === 'connected'"
+        [class.connecting]="store.connectionStatus() === 'connecting'"
+        [class.disconnected]="store.connectionStatus() === 'disconnected'"
+      >
+        <span class="dot"></span>
+        <span>{{ connectionLabel() }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Messages ───────────────────────────────────────────────────────────── -->
+  <div class="messages-area">
+
+    @if (!store.hasMessages()) {
+      <!-- Welcome state -->
+      <div class="welcome-state">
+        <div class="welcome-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L13.09 8.26L19 7L14.74 11.74L21 13L14.74 14.26L19 19L13.09 15.74L12 22L10.91 15.74L5 19L9.26 14.26L3 13L9.26 11.74L5 7L10.91 8.26L12 2Z" fill="#4f46e5"/>
+          </svg>
+        </div>
+        <h3 class="welcome-title">How can I help you today?</h3>
+        <p class="welcome-sub">Ask anything about LCs, invoices, delays, banks, and more.</p>
+
+        <div class="suggested-grid">
+          @for (q of suggestedQueries; track q.text) {
+            <button class="suggest-card" (click)="store.sendMessage(q.query)">
+              <span class="suggest-icon">{{ q.icon }}</span>
+              <span class="suggest-text">{{ q.text }}</span>
+              <svg class="suggest-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+              </svg>
+            </button>
+          }
+        </div>
+      </div>
+
+    } @else {
+      <!-- Message list -->
+      <div class="messages-list">
+        @for (msg of store.messages(); track msg.id) {
+          <app-chat-message
+            [message]="msg"
+            [userInitials]="initials()"
+            (onRetry)="store.retryLast()"
+          />
+        }
+
+        @if (store.isTyping() || store.processingStages().length > 0) {
+          <app-typing-indicator
+            [stages]="store.processingStages()"
+            [currentStage]="store.processingSummary()"
+            [liveLabel]="store.liveStatusLabel()"
+          />
+        }
+
+        <div id="chat-bottom"></div>
+      </div>
+    }
+
+  </div>
+
+  <!-- ── Input ─────────────────────────────────────────────────────────────── -->
+  <div class="input-area">
+    <app-chat-input />
+  </div>
+
+</div>

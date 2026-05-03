@@ -1,0 +1,281 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar {
+  width: 200px;
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  transition: width 0.25s ease;
+}
+
+.sidebar.collapsed {
+  width: 56px;
+}
+
+/* ── Logo ──────────────────────────────────────────────────────────────────── */
+.logo-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+/* When collapsed there is no logo-icon/logo-text; centre the toggle btn */
+.sidebar.collapsed .logo-block {
+  justify-content: center;
+  padding: 14px 8px;
+}
+
+.logo-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logo-text { flex: 1; min-width: 0; }
+.logo-name { font-size: 15px; font-weight: 800; color: #111827; line-height: 1.2; }
+.logo-tagline { font-size: 10px; color: #9ca3af; }
+
+.collapse-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.collapse-btn:hover { background: #f3f4f6; color: #4f46e5; border-color: #4f46e5; }
+
+.sidebar.collapsed .collapse-btn { margin-left: 0; }
+
+/* ── New Chat ───────────────────────────────────────────────────────────────── */
+.new-chat-block { padding: 10px 8px; flex-shrink: 0; }
+
+.new-chat-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.new-chat-btn:hover { opacity: 0.9; }
+
+/* ── Navigation ─────────────────────────────────────────────────────────────── */
+.nav {
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  text-align: left;
+  width: 100%;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.nav-item:hover { background: #f3f4f6; }
+.nav-item.active { background: #eef2ff; color: #4f46e5; font-weight: 600; }
+.nav-icon { display: flex; align-items: center; color: inherit; flex-shrink: 0; }
+
+.nav-badge {
+  background: #E24B4A;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 9px;
+  min-width: 18px;
+  text-align: center;
+  margin-left: auto;
+}
+
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px; }
+
+/* ── Spacer shown instead of recent-section when collapsed ─────────────────── */
+.collapsed-spacer { flex: 1; }
+
+/* ── Recent Conversations ───────────────────────────────────────────────────── */
+.recent-section {
+  flex: 1;
+  padding: 10px 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.recent-header span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-all { background: none; border: none; color: #4f46e5; font-size: 10px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+
+.sessions-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sessions-loading, .sessions-empty {
+  font-size: 12px;
+  color: #9ca3af;
+  padding: 16px 8px;
+  text-align: center;
+}
+
+.session-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.session-item:hover { background: #f9fafb; }
+.session-icon { color: #9ca3af; flex-shrink: 0; margin-top: 2px; }
+
+.session-content { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.session-title {
+  font-size: 12px;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 115px;
+}
+.session-time { font-size: 10px; color: #9ca3af; margin-top: 1px; }
+
+/* ── Delete button – appears on row hover ──────────────────────────────────── */
+.session-delete-btn {
+  opacity: 0;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #d1d5db;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  align-self: center;
+}
+
+.session-item:hover .session-delete-btn { opacity: 1; }
+.session-delete-btn:hover { color: #ef4444; background: #fef2f2; }
+
+/* ── User Block ─────────────────────────────────────────────────────────────── */
+.user-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px;
+  border-top: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed .user-block { justify-content: center; }
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.user-info { flex: 1; min-width: 0; }
+.user-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-role { font-size: 10px; color: #9ca3af; }
+
+.user-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #9ca3af;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+.user-menu-btn:hover { color: #dc2626; }

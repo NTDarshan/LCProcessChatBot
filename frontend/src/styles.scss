@@ -1,0 +1,64 @@
+@use '@angular/material' as mat;
+@use 'ngx-toastr/toastr';
+
+/* ── Inter font for chatbot UI ─────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@font-face {
+  font-family: "GilroyW05-Regular";
+  src: url(/mi/assets/fonts/Gilroy/GilroyW05-Regular.woff) format("woff");
+}
+@font-face {
+  font-family: "GilroyW05-SemiBold";
+  src: url(/mi/assets/fonts/Gilroy/GilroyW05-SemiBold.woff) format("woff");
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Ensure app-root fills full viewport so all child flex layouts work correctly */
+app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+html {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+      typography: Roboto,
+      density: 0,
+    )
+  );
+}
+
+body {
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #111827;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Scrollbar styling ──────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #e5e7eb transparent;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+
+/* ── Reset button defaults ──────────────────────────────────────────────────── */
+button { font-family: inherit; }

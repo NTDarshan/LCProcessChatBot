@@ -1,0 +1,32 @@
+export const APP_ROUTES = {
+  landing: '/',
+  home: '/home',
+  dashboard: '/dashboard',
+  trends: '/trends',
+  admin: '/admin',
+  adminUsers: '/admin/users',
+  adminUsersNew: '/admin/users/new',
+  adminUserEdit: (id: number | string) => `/admin/users/${id}/edit`,
+  adminReports: '/admin/reports',
+  adminReportsNew: '/admin/reports/new',
+  adminReportEdit: (id: number | string) => `/admin/reports/${id}/edit`,
+  adminRegions: '/admin/regions',
+  // adminRegionsNew: '/admin/regions/new',
+  // adminRegionEdit: (id: number | string) => `/admin/regions/${id}/edit`,
+  adminCountry: '/admin/country',
+  unauthorized: '/unauthorized',
+} as const;
+
+export const APP_ROUTE_SEGMENTS = {
+  home: 'home',
+  dashboard: 'dashboard',
+  trends: 'trends',
+  admin: 'admin',
+  users: 'users',
+  reports: 'reports',
+  regions: 'regions',
+  country: 'country',
+  usersNew: 'new',
+  usersEdit: 'edit',
+  unauthorized: 'unauthorized',
+} as const;
