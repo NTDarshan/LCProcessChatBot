@@ -1,6 +1,7 @@
 using backend.Hubs;
 using backend.Repositories;
 using backend.Services;
+using backend.Services.SqlGeneration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -78,6 +79,7 @@ builder.Services.AddSignalR(options =>
     options.MaximumReceiveMessageSize = 102_400;
 });
 
+// Register memory cache service
 builder.Services.AddMemoryCache(options =>
 {
     options.SizeLimit = 500;
@@ -96,6 +98,10 @@ builder.Services.AddScoped<IntentRouterService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ChatHistoryService>();
 builder.Services.AddScoped<SqlValidationService>();
+// SqlGeneration sub-providers — registered before SqlGenerationService
+builder.Services.AddScoped<SchemaProvider>();
+builder.Services.AddScoped<QueryRuleProvider>();
+builder.Services.AddScoped<ResponseTypeGuideProvider>();
 builder.Services.AddScoped<SqlGenerationService>();
 builder.Services.AddScoped<ChatService>();
 

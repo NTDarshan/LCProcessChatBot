@@ -1,5 +1,5 @@
 import {
-  Component, ChangeDetectionStrategy, inject, computed
+  Component, ChangeDetectionStrategy, inject, computed, OnDestroy
 } from '@angular/core';
 import { MessageStore } from '../../services/message.store';
 import { ChatMessageComponent } from '../chat-message/chat-message.component';
@@ -22,7 +22,7 @@ const SUGGESTED_QUERIES = [
   templateUrl: './chat-container.component.html',
   styleUrl:    './chat-container.component.scss',
 })
-export class ChatContainerComponent {
+export class ChatContainerComponent implements OnDestroy {
   protected readonly store = inject(MessageStore);
   private  readonly auth  = inject(AuthService);
 
@@ -40,4 +40,12 @@ export class ChatContainerComponent {
     if (!name) return 'U';
     return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   });
+
+  // ── ngOnDestroy – cooperative cancellation on component destroy ───────────
+  // Fires when the user navigates away from the chat view.
+  // Stops any in-flight generation to prevent orphaned background tasks and
+  // stale chunks arriving after the component has been destroyed.
+  ngOnDestroy(): void {
+    this.store.stopGeneration();
+  }
 }

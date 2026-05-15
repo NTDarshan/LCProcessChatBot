@@ -771,6 +771,15 @@ public class IntentRouterService
           AND (@DaysRange    IS NULL OR lrd.created_on               >= DATEADD(DAY, -@DaysRange, GETDATE()))
         {condition}";
 
+    /// <summary>
+    /// Returns <c>true</c> when the supplied intent key exists in the internal
+    /// predefined-SQL dictionary. Used by ChatService to make a deterministic
+    /// routing decision before any SQL is executed.
+    /// </summary>
+    /// <param name="intent">Intent string returned by AiUnderstandingService.</param>
+    public bool HasIntent(string intent)
+        => !string.IsNullOrWhiteSpace(intent) && _intents.ContainsKey(intent);
+
     public IntentDefinition? GetDefinition(string intentName)
         => _intents.TryGetValue(intentName, out var def) ? def : null;
 

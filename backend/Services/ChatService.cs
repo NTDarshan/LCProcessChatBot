@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Diagnostics;
 using backend.Dtos;
+using backend.Models;
 using backend.Repositories;
 using Microsoft.Extensions.Configuration;
 
@@ -68,13 +69,25 @@ public class ChatService
             ["LcHistory"] = "timeline",
         };
 
-    // Main entry point
+    // Main entry point – no cancellation token (HTTP fallback path)
     public async Task<ChatResponseDto> ProcessAsync(ChatRequestDto request)
     {
-        return await ProcessAsync(request, null);
+        return await ProcessAsync(request, null, CancellationToken.None);
     }
 
-    public async Task<ChatResponseDto> ProcessAsync(ChatRequestDto request,Func<ProcessingStageUpdateDto, Task>? stageUpdate)
+    // Overload with stage updates only (used internally / SignalR path without token)
+    public async Task<ChatResponseDto> ProcessAsync(ChatRequestDto request, Func<ProcessingStageUpdateDto, Task>? stageUpdate)
+    {
+        return await ProcessAsync(request, stageUpdate, CancellationToken.None);
+    }
+
+    // Primary overload – accepts both stage callback and cancellation token.
+    // cancellationToken: should be HttpContext.RequestAborted so the entire
+    // pipeline unwinds cooperatively when the client disconnects.
+    public async Task<ChatResponseDto> ProcessAsync(
+        ChatRequestDto request,
+        Func<ProcessingStageUpdateDto, Task>? stageUpdate,
+        CancellationToken cancellationToken)
     {
         _logger.LogInformation("Query | Email: {Email} | Message: {Message}",request.UserEmail, request.Message);
 
@@ -109,7 +122,9 @@ public class ChatService
             string? errorMessage = null,
             Dictionary<string, string>? technicalDetails = null)
         {
-            if (stageUpdate is null) return;
+            // Skip emission entirely once cancellation is requested – the client
+            // is gone and further SignalR pushes would be orphaned.
+            if (stageUpdate is null || cancellationToken.IsCancellationRequested) return;
 
             sequence++;
 
@@ -192,23 +207,25 @@ public class ChatService
             };
         }
 
-        // Step 2 – Resolve user
-        var userId = await _sessionService.GetUserIdAsync(request.UserEmail);
+        // Step 2 – Resolve user (propagate cancellationToken to SQL)
+        var userId = await _sessionService.GetUserIdAsync(request.UserEmail, cancellationToken);
 
-        // Step 3 – Session
-        var sessionId = await _sessionService.GetOrCreateSessionAsync(userId, request.SessionId);
+        // Step 3 – Session (propagate cancellationToken to SQL)
+        var sessionId = await _sessionService.GetOrCreateSessionAsync(userId, request.SessionId, cancellationToken);
 
-        // Step 4 – Save user message
-        await _historyService.SaveMessageAsync(sessionId, "user", request.Message);
+        // Step 4 – Save user message (propagate cancellationToken to SQL)
+        await _historyService.SaveMessageAsync(sessionId, "user", request.Message, cancellationToken: cancellationToken);
 
         // Step 5 – Entity extraction
         var entities = _entityExtractor.Extract(request.Message);
 
         // Step 6 – Intent classification (used for ResponseLabel only — not for routing)
-        var intent = await _aiUnderstanding.GetIntentAsync(request.Message);
+        // Pass cancellationToken so the Azure OpenAI call stops if the client disconnects.
+        var intent = await _aiUnderstanding.GetIntentAsync(request.Message, cancellationToken);
         _logger.LogInformation("Intent (label only): {Intent} | Session: {Session}", intent, sessionId);
 
-        aiLabelsTask = _aiUnderstanding.GenerateProcessingLabelsAsync(request.Message, intent);
+        // Fire-and-forget label generation – pass token so it cancels if pipeline aborts early
+        aiLabelsTask = _aiUnderstanding.GenerateProcessingLabelsAsync(request.Message, intent, cancellationToken);
         await EmitStageAsync(
             stageKey: "query_parse",
             stageName: "Understanding your question",
@@ -258,7 +275,8 @@ public class ChatService
             await _historyService.SaveMessageAsync(
                 sessionId, "assistant", cachedResponse.Response,
                 cachedResponse.ExecutedQuery,
-                cachedResponse.Intent, cachedResponse.ResponseType, serializedCachedData, cachedResponse.QueryType);
+                cachedResponse.Intent, cachedResponse.ResponseType, serializedCachedData, cachedResponse.QueryType,
+                cancellationToken);
 
             await EmitStageAsync(
                 stageKey: "cache_hit",
@@ -289,182 +307,396 @@ public class ChatService
                 ["preprocessing"] = "entity extraction and intent labeling complete"
             });
 
-        await EmitStageAsync(
-            stageKey: "tool_invocation",
-            stageName: "Preparing tools",
-            progressPercent: 52,
-            estimatedMsRemaining: 2000,
-            technicalDetails: new Dictionary<string, string>
-            {
-                ["tool"] = "SqlGenerationService",
-                ["mode"] = "text_to_sql"
-            });
-
+        // ── Routing Decision ──────────────────────────────────────────────────
+        var routing = DetermineRouting(intent);
         _logger.LogInformation(
-            "TEXT-TO-SQL | Session: {Session} | Message: {Message}",
-            sessionId, request.Message);
-
-        await EmitStageAsync(
-            stageKey: "query_building",
-            stageName: "Preparing SQL query",
-            progressPercent: 56,
-            estimatedMsRemaining: 1900,
-            technicalDetails: new Dictionary<string, string>
-            {
-                ["pipeline"] = "text_to_sql",
-                ["parameterBinding.userId"] = userId.ToString(),
-                ["parameterBinding.lcNumber"] = entities.LcNumber ?? "null",
-                ["parameterBinding.bankName"] = entities.BankName ?? "null",
-                ["parameterBinding.customerName"] = entities.CustomerName ?? "null",
-                ["parameterBinding.status"] = entities.Status ?? "null"
-            });
-
-        var genResult = await _sqlGeneration.GenerateSqlAsync(request.Message, userId);
+            "Routing | UseIntentRouter: {Use} | Reason: {Reason}",
+            routing.UseIntentRouter, routing.Reason);
 
         List<dynamic> dbRows;
         string responseType;
         string responseLabel;
+        string? executedSql;
+        string? queryType;
+        bool isTextToSql;
 
-        if (!genResult.IsSuccess)
+        if (routing.UseIntentRouter)
         {
-            _logger.LogWarning(
-                "SQL generation failed: {Error} | Message: {Message}",
-                genResult.Error, request.Message);
+            // ── Known Intent Route ────────────────────────────────────────────
+            // The intent is registered in IntentRouterService; use predefined SQL.
+            // SqlGenerationService is NOT invoked on this path.
+            await EmitStageAsync(
+                stageKey: "tool_invocation",
+                stageName: "Preparing tools",
+                progressPercent: 52,
+                estimatedMsRemaining: 2000,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["tool"] = "IntentRouterService",
+                    ["mode"] = "predefined_sql",
+                    ["intent"] = intent
+                });
+
+            var definition = _intentRouter.GetDefinition(intent);
+            if (definition is null)
+            {
+                // Defensive: HasIntent returned true but GetDefinition returned null — should never happen.
+                _logger.LogError("IntentRouterService.GetDefinition returned null for a registered intent: {Intent}", intent);
+                await EmitStageAsync(
+                    stageKey: "tool_invocation",
+                    stageName: "Preparing tools",
+                    progressPercent: 100,
+                    status: "failed",
+                    elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                    estimatedMsRemaining: 0,
+                    errorMessage: "Internal routing error.",
+                    technicalDetails: new Dictionary<string, string> { ["intentRouter"] = "definition_missing" });
+
+                return new ChatResponseDto
+                {
+                    Response      = "An internal error occurred while retrieving the query definition. Please try again.",
+                    Data          = [],
+                    SessionId     = sessionId,
+                    Intent        = intent,
+                    ResponseType  = "text_only",
+                    ResponseLabel = "Internal error"
+                };
+            }
+
+            var intentSql = definition.Sql;
+
+            _logger.LogInformation(
+                "Known Intent Route | Intent: {Intent} | Session: {Session}",
+                intent, sessionId);
+
+            await EmitStageAsync(
+                stageKey: "tool_invocation",
+                stageName: "Preparing tools",
+                progressPercent: 60,
+                status: "completed",
+                estimatedMsRemaining: 1600,
+                elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["tool"]   = "IntentRouterService",
+                    ["status"] = "success"
+                });
+
             await EmitStageAsync(
                 stageKey: "query_building",
                 stageName: "Preparing SQL query",
-                progressPercent: 100,
-                status: "failed",
-                elapsedMs: totalStopwatch.ElapsedMilliseconds,
-                estimatedMsRemaining: 0,
-                errorMessage: genResult.Error,
-                technicalDetails: new Dictionary<string, string> { ["sqlGeneration"] = "failed" });
-
-            return new ChatResponseDto
-            {
-                Response      = $"I wasn't able to generate a safe SQL query for that question. {genResult.Error}. Please try rephrasing.",
-                Data          = [],
-                SessionId     = sessionId,
-                Intent        = intent,
-                ResponseType  = "text_only",
-                ResponseLabel = "Query generation failed",
-                IsTextToSql   = true
-            };
-        }
-
-        await EmitStageAsync(
-            stageKey: "tool_invocation",
-            stageName: "Preparing tools",
-            progressPercent: 60,
-            status: "completed",
-            estimatedMsRemaining: 1600,
-            elapsedMs: totalStopwatch.ElapsedMilliseconds,
-            technicalDetails: new Dictionary<string, string>
-            {
-                ["tool"] = "SqlGenerationService",
-                ["status"] = "success"
-            });
-
-        _logger.LogInformation(
-            "SQL ready | ResponseType: {RT} | Reasoning: {R}",
-            genResult.ResponseType, genResult.Reasoning);
-        await EmitStageAsync(
-            stageKey: "query_building",
-            stageName: "Preparing SQL query",
-            progressPercent: 66,
-            status: "completed",
-            estimatedMsRemaining: 1400,
-            elapsedMs: totalStopwatch.ElapsedMilliseconds,
-            technicalDetails: new Dictionary<string, string>
-            {
-                ["queryType"] = genResult.QueryType ?? "unknown",
-                ["responseType"] = genResult.ResponseType ?? "unknown",
-                ["sqlLength"] = genResult.Sql.Length.ToString()
-            });
-
-        await EmitStageAsync(
-            stageKey: "execution_plan",
-            stageName: "Selecting data retrieval strategy",
-            progressPercent: 72,
-            status: "completed",
-            estimatedMsRemaining: 1100,
-            elapsedMs: totalStopwatch.ElapsedMilliseconds,
-            technicalDetails: new Dictionary<string, string>
-            {
-                ["queryType"] = genResult.QueryType ?? "unknown",
-                ["renderer"] = genResult.ResponseType ?? "table",
-                ["reasoning"] = string.IsNullOrWhiteSpace(genResult.Reasoning) ? "n/a" : genResult.Reasoning
-            });
-
-        _cache.SetSqlResult(userId, request.Message, genResult);
-
-        try
-        {
-            var sqlStopwatch = Stopwatch.StartNew();
-            await EmitStageAsync(
-                stageKey: "db_execution",
-                stageName: "Fetching data from database",
-                progressPercent: 80,
-                estimatedMsRemaining: 700,
-                technicalDetails: new Dictionary<string, string>
-                {
-                    ["command"] = "QueryAsync<dynamic>",
-                    ["sqlPreview"] = genResult.Sql.Length > 220
-                        ? $"{genResult.Sql[..220]}..."
-                        : genResult.Sql,
-                    ["boundParameters"] = $"UserId={userId}"
-                });
-
-            dbRows = (await _db.QueryAsync<dynamic>(genResult.Sql, new { UserId = userId })).ToList();
-            _logger.LogInformation("SQL returned {Count} rows", dbRows.Count);
-            sqlStopwatch.Stop();
-
-            await EmitStageAsync(
-                stageKey: "db_execution",
-                stageName: "Fetching data from database",
-                progressPercent: 86,
+                progressPercent: 66,
                 status: "completed",
-                estimatedMsRemaining: 500,
-                elapsedMs: sqlStopwatch.ElapsedMilliseconds,
-                technicalDetails: new Dictionary<string, string>
-                {
-                    ["rowsReturned"] = dbRows.Count.ToString(),
-                    ["executionMs"] = sqlStopwatch.ElapsedMilliseconds.ToString()
-                });
-        }
-        catch (Exception sqlEx)
-        {
-            _logger.LogError(sqlEx, "SQL execution failed | SQL: {Sql}", genResult.Sql);
-            await EmitStageAsync(
-                stageKey: "db_execution",
-                stageName: "Fetching data from database",
-                progressPercent: 100,
-                status: "failed",
+                estimatedMsRemaining: 1400,
                 elapsedMs: totalStopwatch.ElapsedMilliseconds,
-                estimatedMsRemaining: 0,
-                errorMessage: sqlEx.Message,
                 technicalDetails: new Dictionary<string, string>
                 {
-                    ["sqlPreview"] = genResult.Sql.Length > 220
-                        ? $"{genResult.Sql[..220]}..."
-                        : genResult.Sql
+                    ["pipeline"]  = "predefined_sql",
+                    ["intent"]    = intent,
+                    ["sqlLength"] = intentSql.Length.ToString()
                 });
 
-            return new ChatResponseDto
+            await EmitStageAsync(
+                stageKey: "execution_plan",
+                stageName: "Selecting data retrieval strategy",
+                progressPercent: 72,
+                status: "completed",
+                estimatedMsRemaining: 1100,
+                elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["strategy"] = "intent_router",
+                    ["intent"]   = intent
+                });
+
+            var intentParams = new
             {
-                Response      = "The generated query encountered a database error. Please try rephrasing your question.",
-                Data          = [],
-                SessionId     = sessionId,
-                Intent        = intent,
-                ResponseType  = "text_only",
-                ResponseLabel = "Execution error",
-                IsTextToSql   = true,
-                ExecutedQuery = _showSqlQuery ? genResult.Sql : null
+                UserId       = userId,
+                LcNumber     = entities.LcNumber,
+                BankName     = entities.BankName,
+                CustomerName = entities.CustomerName,
+                Status       = entities.Status,
+                MinAmount    = entities.MinAmount,
+                MaxAmount    = entities.MaxAmount,
+                DaysRange    = entities.DaysRange,
+                StartDate    = entities.StartDate,
+                EndDate      = entities.EndDate,
+                Country      = entities.Country,
+                CurrencyCode = entities.CurrencyCode,
+                IsPendingStatus = entities.IsPendingStatus
             };
+
+            try
+            {
+                var sqlStopwatch = Stopwatch.StartNew();
+                await EmitStageAsync(
+                    stageKey: "db_execution",
+                    stageName: "Fetching data from database",
+                    progressPercent: 80,
+                    estimatedMsRemaining: 700,
+                    technicalDetails: new Dictionary<string, string>
+                    {
+                        ["command"]    = "QueryAsync<dynamic>",
+                        ["sqlPreview"] = intentSql.Length > 220
+                            ? $"{intentSql[..220]}..."
+                            : intentSql,
+                        ["boundParameters"] = $"UserId={userId}"
+                    });
+
+                // Propagate cancellationToken to Dapper CommandDefinition so the SQL query
+                // is cancelled cooperatively when the client disconnects.
+                dbRows = (await _db.QueryAsync<dynamic>(intentSql, intentParams, cancellationToken)).ToList();
+                _logger.LogInformation("Known Intent SQL returned {Count} rows", dbRows.Count);
+                sqlStopwatch.Stop();
+
+                await EmitStageAsync(
+                    stageKey: "db_execution",
+                    stageName: "Fetching data from database",
+                    progressPercent: 86,
+                    status: "completed",
+                    estimatedMsRemaining: 500,
+                    elapsedMs: sqlStopwatch.ElapsedMilliseconds,
+                    technicalDetails: new Dictionary<string, string>
+                    {
+                        ["rowsReturned"] = dbRows.Count.ToString(),
+                        ["executionMs"]  = sqlStopwatch.ElapsedMilliseconds.ToString()
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                // Client disconnected – cancellation is expected, not a system error.
+                _logger.LogInformation("SQL execution cancelled by client disconnect | Intent: {Intent}", intent);
+                throw;
+            }
+            catch (Exception sqlEx)
+            {
+                _logger.LogError(sqlEx, "Known Intent SQL execution failed | Intent: {Intent}", intent);
+                await EmitStageAsync(
+                    stageKey: "db_execution",
+                    stageName: "Fetching data from database",
+                    progressPercent: 100,
+                    status: "failed",
+                    elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                    estimatedMsRemaining: 0,
+                    errorMessage: sqlEx.Message,
+                    technicalDetails: new Dictionary<string, string>
+                    {
+                        ["sqlPreview"] = intentSql.Length > 220
+                            ? $"{intentSql[..220]}..."
+                            : intentSql
+                    });
+
+                return new ChatResponseDto
+                {
+                    Response      = "A database error occurred while retrieving your data. Please try again.",
+                    Data          = [],
+                    SessionId     = sessionId,
+                    Intent        = intent,
+                    ResponseType  = "text_only",
+                    ResponseLabel = "Execution error",
+                    IsTextToSql   = false,
+                    ExecutedQuery = _showSqlQuery ? intentSql : null
+                };
+            }
+
+            responseType  = ResponseTypeMap.TryGetValue(intent, out var rt) ? rt : "table";
+            responseLabel = BuildResponseLabel(intent, dbRows.Count);
+            executedSql   = _showSqlQuery ? BuildResolvedQuery(intentSql, entities, userId) : null;
+            queryType     = "predefined";
+            isTextToSql   = false;
+        }
+        else
+        {
+            // ── Dynamic AI SQL Route ──────────────────────────────────────────
+            // Intent is not in IntentRouterService; delegate to SqlGenerationService.
+            await EmitStageAsync(
+                stageKey: "tool_invocation",
+                stageName: "Preparing tools",
+                progressPercent: 52,
+                estimatedMsRemaining: 2000,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["tool"] = "SqlGenerationService",
+                    ["mode"] = "text_to_sql"
+                });
+
+            _logger.LogInformation(
+                "Dynamic AI SQL Route | Session: {Session} | Message: {Message}",
+                sessionId, request.Message);
+
+            await EmitStageAsync(
+                stageKey: "query_building",
+                stageName: "Preparing SQL query",
+                progressPercent: 56,
+                estimatedMsRemaining: 1900,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["pipeline"]                     = "text_to_sql",
+                    ["parameterBinding.userId"]      = userId.ToString(),
+                    ["parameterBinding.lcNumber"]    = entities.LcNumber ?? "null",
+                    ["parameterBinding.bankName"]    = entities.BankName ?? "null",
+                    ["parameterBinding.customerName"]= entities.CustomerName ?? "null",
+                    ["parameterBinding.status"]      = entities.Status ?? "null"
+                });
+
+            // Propagate cancellationToken so Azure OpenAI SQL generation stops if aborted.
+            var genResult = await _sqlGeneration.GenerateSqlAsync(request.Message, userId, cancellationToken);
+
+            if (!genResult.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "SQL generation failed: {Error} | Message: {Message}",
+                    genResult.Error, request.Message);
+                await EmitStageAsync(
+                    stageKey: "query_building",
+                    stageName: "Preparing SQL query",
+                    progressPercent: 100,
+                    status: "failed",
+                    elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                    estimatedMsRemaining: 0,
+                    errorMessage: genResult.Error,
+                    technicalDetails: new Dictionary<string, string> { ["sqlGeneration"] = "failed" });
+
+                return new ChatResponseDto
+                {
+                    Response      = $"I wasn't able to generate a safe SQL query for that question. {genResult.Error}. Please try rephrasing.",
+                    Data          = [],
+                    SessionId     = sessionId,
+                    Intent        = intent,
+                    ResponseType  = "text_only",
+                    ResponseLabel = "Query generation failed",
+                    IsTextToSql   = true
+                };
+            }
+
+            await EmitStageAsync(
+                stageKey: "tool_invocation",
+                stageName: "Preparing tools",
+                progressPercent: 60,
+                status: "completed",
+                estimatedMsRemaining: 1600,
+                elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["tool"]   = "SqlGenerationService",
+                    ["status"] = "success"
+                });
+
+            _logger.LogInformation(
+                "SQL ready | ResponseType: {RT} | Reasoning: {R}",
+                genResult.ResponseType, genResult.Reasoning);
+
+            await EmitStageAsync(
+                stageKey: "query_building",
+                stageName: "Preparing SQL query",
+                progressPercent: 66,
+                status: "completed",
+                estimatedMsRemaining: 1400,
+                elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["queryType"]    = genResult.QueryType ?? "unknown",
+                    ["responseType"] = genResult.ResponseType ?? "unknown",
+                    ["sqlLength"]    = genResult.Sql.Length.ToString()
+                });
+
+            await EmitStageAsync(
+                stageKey: "execution_plan",
+                stageName: "Selecting data retrieval strategy",
+                progressPercent: 72,
+                status: "completed",
+                estimatedMsRemaining: 1100,
+                elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                technicalDetails: new Dictionary<string, string>
+                {
+                    ["queryType"] = genResult.QueryType ?? "unknown",
+                    ["renderer"]  = genResult.ResponseType ?? "table",
+                    ["reasoning"] = string.IsNullOrWhiteSpace(genResult.Reasoning) ? "n/a" : genResult.Reasoning
+                });
+
+            _cache.SetSqlResult(userId, request.Message, genResult);
+
+            try
+            {
+                var sqlStopwatch = Stopwatch.StartNew();
+                await EmitStageAsync(
+                    stageKey: "db_execution",
+                    stageName: "Fetching data from database",
+                    progressPercent: 80,
+                    estimatedMsRemaining: 700,
+                    technicalDetails: new Dictionary<string, string>
+                    {
+                        ["command"]         = "QueryAsync<dynamic>",
+                        ["sqlPreview"]      = genResult.Sql.Length > 220
+                            ? $"{genResult.Sql[..220]}..."
+                            : genResult.Sql,
+                        ["boundParameters"] = $"UserId={userId}"
+                    });
+
+                // Propagate cancellationToken to Dapper CommandDefinition so the SQL query
+                // is cancelled cooperatively when the client disconnects.
+                dbRows = (await _db.QueryAsync<dynamic>(genResult.Sql, new { UserId = userId }, cancellationToken)).ToList();
+                _logger.LogInformation("SQL returned {Count} rows", dbRows.Count);
+                sqlStopwatch.Stop();
+
+                await EmitStageAsync(
+                    stageKey: "db_execution",
+                    stageName: "Fetching data from database",
+                    progressPercent: 86,
+                    status: "completed",
+                    estimatedMsRemaining: 500,
+                    elapsedMs: sqlStopwatch.ElapsedMilliseconds,
+                    technicalDetails: new Dictionary<string, string>
+                    {
+                        ["rowsReturned"] = dbRows.Count.ToString(),
+                        ["executionMs"]  = sqlStopwatch.ElapsedMilliseconds.ToString()
+                    });
+            }
+            catch (OperationCanceledException)
+            {
+                // Client disconnected – cancellation is expected, not a system error.
+                _logger.LogInformation("Dynamic SQL execution cancelled by client disconnect");
+                throw;
+            }
+            catch (Exception sqlEx)
+            {
+                _logger.LogError(sqlEx, "SQL execution failed | SQL: {Sql}", genResult.Sql);
+                await EmitStageAsync(
+                    stageKey: "db_execution",
+                    stageName: "Fetching data from database",
+                    progressPercent: 100,
+                    status: "failed",
+                    elapsedMs: totalStopwatch.ElapsedMilliseconds,
+                    estimatedMsRemaining: 0,
+                    errorMessage: sqlEx.Message,
+                    technicalDetails: new Dictionary<string, string>
+                    {
+                        ["sqlPreview"] = genResult.Sql.Length > 220
+                            ? $"{genResult.Sql[..220]}..."
+                            : genResult.Sql
+                    });
+
+                return new ChatResponseDto
+                {
+                    Response      = "The generated query encountered a database error. Please try rephrasing your question.",
+                    Data          = [],
+                    SessionId     = sessionId,
+                    Intent        = intent,
+                    ResponseType  = "text_only",
+                    ResponseLabel = "Execution error",
+                    IsTextToSql   = true,
+                    ExecutedQuery = _showSqlQuery ? genResult.Sql : null
+                };
+            }
+
+            responseType  = genResult.ResponseType;
+            responseLabel = $"Results · {dbRows.Count} record{(dbRows.Count != 1 ? "s" : "")}";
+            executedSql   = _showSqlQuery ? genResult.Sql : null;
+            queryType     = genResult.QueryType;
+            isTextToSql   = true;
         }
 
-        responseType  = genResult.ResponseType;
-        responseLabel = $"Results · {dbRows.Count} record{(dbRows.Count != 1 ? "s" : "")}";
+        // ── Shared tail: result_processing → AI summary → persist → return ────
         await EmitStageAsync(
             stageKey: "result_processing",
             stageName: "Organizing results",
@@ -475,11 +707,11 @@ public class ChatService
             technicalDetails: new Dictionary<string, string>
             {
                 ["targetResponseType"] = responseType,
-                ["queryType"] = genResult.QueryType ?? "unknown",
-                ["rowCount"] = dbRows.Count.ToString()
+                ["queryType"]          = queryType ?? "unknown",
+                ["rowCount"]           = dbRows.Count.ToString()
             });
 
-        // ── Step 8 — AI natural language summary ────────────────────────────────
+        // ── AI natural language summary ────────────────────────────────────────
         string aiResponse;
         if (dbRows.Count == 0)
         {
@@ -487,7 +719,9 @@ public class ChatService
         }
         else
         {
-            aiResponse = await _aiResponse.GenerateResponseAsync(request.Message, dbRows);
+            // Pass cancellationToken so Azure OpenAI response generation stops
+            // immediately if the client has already disconnected.
+            aiResponse = await _aiResponse.GenerateResponseAsync(request.Message, dbRows, cancellationToken: cancellationToken);
             var lower = aiResponse.Trim().ToLowerInvariant();
             if (lower.StartsWith("no records") || lower.StartsWith("no data"))
                 aiResponse = $"Found {dbRows.Count} record(s) matching your query.";
@@ -502,16 +736,19 @@ public class ChatService
             elapsedMs: totalStopwatch.ElapsedMilliseconds,
             technicalDetails: new Dictionary<string, string>
             {
-                ["usedAiSummarizer"] = (dbRows.Count > 0).ToString(),
+                ["usedAiSummarizer"]    = (dbRows.Count > 0).ToString(),
                 ["finalResponseLength"] = aiResponse.Length.ToString()
             });
 
-        // ── Step 9 — Persist and return ──────────────────────────────────────────
+        // ── Persist and return ─────────────────────────────────────────────────
         var serializedData = System.Text.Json.JsonSerializer.Serialize(dbRows);
+        // Propagate cancellationToken to history save – if already cancelled the
+        // INSERT is skipped cooperatively (DB connection is not abandoned).
         await _historyService.SaveMessageAsync(
             sessionId, "assistant", aiResponse,
-            _showSqlQuery ? genResult.Sql : null,
-            intent, responseType, serializedData, genResult.QueryType);
+            executedSql,
+            intent, responseType, serializedData, queryType,
+            cancellationToken);
 
         _logger.LogInformation(
             "Done | Session: {Session} | Rows: {Count} | RT: {RT}",
@@ -522,12 +759,12 @@ public class ChatService
             Response      = aiResponse,
             Data          = dbRows,
             SessionId     = sessionId,
-            ExecutedQuery = _showSqlQuery ? genResult.Sql : null,
+            ExecutedQuery = executedSql,
             Intent        = intent,
             ResponseType  = responseType,
             ResponseLabel = responseLabel,
-            IsTextToSql   = true,
-            QueryType     = genResult.QueryType
+            IsTextToSql   = isTextToSql,
+            QueryType     = queryType
         };
 
         if (dbRows.Count > 0
@@ -546,12 +783,39 @@ public class ChatService
             elapsedMs: totalStopwatch.ElapsedMilliseconds,
             technicalDetails: new Dictionary<string, string>
             {
-                ["sessionId"] = sessionId,
+                ["sessionId"]      = sessionId,
                 ["totalElapsedMs"] = totalStopwatch.ElapsedMilliseconds.ToString(),
-                ["responseType"] = finalResponse.ResponseType ?? "unknown"
+                ["responseType"]   = finalResponse.ResponseType ?? "unknown"
             });
 
         return finalResponse;
+    }
+
+    // ── DetermineRouting ──────────────────────────────────────────────────────
+    /// <summary>
+    /// Produces a deterministic <see cref="QueryRoutingDecision"/> based solely
+    /// on whether IntentRouterService has a predefined SQL for the given intent.
+    /// Known intents → IntentRouterService.
+    /// Unknown intents → SqlGenerationService (AI fallback).
+    /// </summary>
+    private QueryRoutingDecision DetermineRouting(string intent)
+    {
+        if (_intentRouter.HasIntent(intent))
+        {
+            return new QueryRoutingDecision
+            {
+                UseIntentRouter = true,
+                Intent          = intent,
+                Reason          = $"Intent '{intent}' is registered in IntentRouterService — using predefined SQL."
+            };
+        }
+
+        return new QueryRoutingDecision
+        {
+            UseIntentRouter = false,
+            Intent          = intent,
+            Reason          = $"Intent '{intent}' has no predefined SQL — falling back to SqlGenerationService."
+        };
     }
 
     // ── BuildResponseLabel ────────────────────────────────────────────────────

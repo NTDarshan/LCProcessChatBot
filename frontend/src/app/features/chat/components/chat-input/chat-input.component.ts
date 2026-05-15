@@ -38,8 +38,9 @@ export class ChatInputComponent {
   }
 
   stop(): void {
-    // TODO: cancel streaming when SignalR is wired up
-    this.store.isTyping.set(false);
+    // Abort the active HTTP request (triggers backend RequestAborted token)
+    // and reset all streaming signals so stale chunks are discarded immediately.
+    this.store.stopGeneration();
   }
 
   autoResize(): void {

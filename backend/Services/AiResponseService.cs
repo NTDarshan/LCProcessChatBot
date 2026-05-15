@@ -19,31 +19,41 @@ namespace backend.Services;
 //  4.  Empty result message made friendlier — says "No records found" not
 //      "No data found for your query." (matches the new LcEmptyStateComponent).
 //  5.  Amount formatting guidance: use "1.15M EUR" shorthand for large values.
+//
+//  CANCELLATION ENHANCEMENT:
+//  CancellationToken is forwarded to CompleteChatAsync so that if the HTTP
+//  request is aborted, the Azure OpenAI call is cancelled immediately —
+//  preventing unnecessary token spend on discarded completions.
 // ─────────────────────────────────────────────────────────────────────────────
 public class AiResponseService
 {
     private readonly ChatClient _chatClient;
+    private readonly ILogger<AiResponseService> _logger;
 
-    public AiResponseService(IConfiguration config)
+    public AiResponseService(IConfiguration config, ILogger<AiResponseService> logger)
     {
-        var endpoint = config["OpenAI:Endpoint"]!;
-        var key = config["OpenAI:Key"]!;
+        _logger = logger;
+        var endpoint   = config["OpenAI:Endpoint"]!;
+        var key        = config["OpenAI:Key"]!;
         var deployment = config["OpenAI:Deployment"]!;
-        var client = new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(key));
-        _chatClient = client.GetChatClient(deployment);
+        var client     = new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(key));
+        _chatClient    = client.GetChatClient(deployment);
     }
 
     // Generates a concise professional summary grounded strictly in the DB data.
     // conversationHistory: optional last few turns for follow-up context.
+    // cancellationToken: forwarded to Azure OpenAI so the completion call is
+    // cancelled immediately when the client disconnects, preventing wasted tokens.
     public async Task<string> GenerateResponseAsync(
         string userQuestion,
         object dbResult,
-        IEnumerable<(string Role, string Content)>? conversationHistory = null)
+        IEnumerable<(string Role, string Content)>? conversationHistory = null,
+        CancellationToken cancellationToken = default)
     {
         var jsonData = JsonSerializer.Serialize(dbResult, new JsonSerializerOptions
         {
-            WriteIndented = false,
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.Strict
+            WriteIndented    = false,
+            NumberHandling   = System.Text.Json.Serialization.JsonNumberHandling.Strict
         });
 
         var systemPrompt = """
@@ -155,7 +165,18 @@ public class AiResponseService
 
         messages.Add(new UserChatMessage(userPrompt));
 
-        var response = await _chatClient.CompleteChatAsync(messages);
-        return response.Value.Content[0].Text.Trim();
+        try
+        {
+            // Pass cancellationToken: if the HTTP request is aborted mid-generation,
+            // the Azure OpenAI call is cancelled immediately to stop token spend.
+            var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
+            return response.Value.Content[0].Text.Trim();
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is expected behaviour – log informational, not error.
+            _logger.LogInformation("AI response generation cancelled by client disconnect");
+            throw; // Re-throw so the pipeline unwinds cleanly
+        }
     }
 }

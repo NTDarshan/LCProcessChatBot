@@ -25,6 +25,22 @@ export class SignalRService {
   private userEmail: string | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ── Cancellation generation counter ────────────────────────────────────────
+  // Incremented each time a new message starts. SignalR uses the hub-side
+  // Context.ConnectionAborted for backend cancellation; this counter is used
+  // purely on the frontend to gate stale chunk rendering.
+  private _activeGeneration = 0;
+
+  /** Returns the current generation ID so subscribers can detect staleness. */
+  get activeGeneration(): number {
+    return this._activeGeneration;
+  }
+
+  /** Advance the generation counter to invalidate any in-progress stream. */
+  advanceGeneration(): number {
+    return ++this._activeGeneration;
+  }
+
   async startConnection(token: string, userEmail: string): Promise<void> {
     this.userEmail = userEmail;
 

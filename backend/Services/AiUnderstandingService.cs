@@ -22,6 +22,10 @@ namespace backend.Services;
 //  5.  "issued" rule now uses word boundary to avoid matching "reissued".
 //  6.  Amendment count / "multiple amendments" rule added.
 //  7.  N+1 / N+2 specific routing rules added.
+//
+//  CANCELLATION ENHANCEMENT:
+//  CancellationToken is threaded through all Azure OpenAI calls so that
+//  intent classification stops immediately when the request is aborted.
 // ─────────────────────────────────────────────────────────────────────────────
 public class AiUnderstandingService
 {
@@ -141,15 +145,20 @@ public class AiUnderstandingService
         ILogger<AiUnderstandingService> logger)
     {
         _logger = logger;
-        var endpoint = config["OpenAI:Endpoint"]!;
-        var key = config["OpenAI:Key"]!;
+        var endpoint   = config["OpenAI:Endpoint"]!;
+        var key        = config["OpenAI:Key"]!;
         var deployment = config["OpenAI:Deployment"]!;
-        var client = new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(key));
-        _chatClient = client.GetChatClient(deployment);
+        var client     = new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(key));
+        _chatClient    = client.GetChatClient(deployment);
     }
 
-    // Full pipeline: normalize → rules → AI → safety gate
-    public async Task<string> GetIntentAsync(string message)
+    // Full pipeline: normalize → rules → AI → safety gate.
+    // cancellationToken: passed to the Azure OpenAI call so that if the
+    // request is aborted, the HTTP call to OpenAI is cancelled immediately,
+    // preventing unnecessary token consumption.
+    public async Task<string> GetIntentAsync(
+        string message,
+        CancellationToken cancellationToken = default)
     {
         var normalized = Normalize(message);
         _logger.LogInformation("Intent | Original: '{Msg}' | Normalized: '{Norm}'", message, normalized);
@@ -163,7 +172,7 @@ public class AiUnderstandingService
         }
 
         _logger.LogInformation("No rule match – calling AI classifier");
-        var aiRaw = await CallAiClassifierAsync(normalized);
+        var aiRaw   = await CallAiClassifierAsync(normalized, cancellationToken);
         var resolved = ResolveIntent(aiRaw);
         _logger.LogInformation("AI raw: '{Raw}' → resolved: '{Resolved}'", aiRaw, resolved);
         return resolved;
@@ -172,7 +181,7 @@ public class AiUnderstandingService
     // ── Normalize ─────────────────────────────────────────────────────────────
     private static string Normalize(string message)
     {
-        var lower = message.ToLowerInvariant().Trim();
+        var lower   = message.ToLowerInvariant().Trim();
         // Keep alphanumeric, spaces, + and / (needed for N+1, N+2, LC codes)
         var cleaned = Regex.Replace(lower, @"[^a-z0-9\s\+\/]", " ");
         return Regex.Replace(cleaned, @"\s+", " ").Trim();
@@ -190,7 +199,11 @@ public class AiUnderstandingService
     }
 
     // ── AI classifier ─────────────────────────────────────────────────────────
-    private async Task<string> CallAiClassifierAsync(string normalized)
+    // cancellationToken: forwarded to CompleteChatAsync so the Azure OpenAI
+    // HTTP call is cancelled immediately when the upstream token fires.
+    private async Task<string> CallAiClassifierAsync(
+        string normalized,
+        CancellationToken cancellationToken = default)
     {
         var systemPrompt = """
             You are an intent classifier for an enterprise Letter of Credit (LC) management system
@@ -244,7 +257,7 @@ public class AiUnderstandingService
             """;
 
         var userPrompt = $"User: {normalized}\nIntent:";
-        var messages = new List<ChatMessage>
+        var messages   = new List<ChatMessage>
         {
             new SystemChatMessage(systemPrompt),
             new UserChatMessage(userPrompt)
@@ -252,8 +265,16 @@ public class AiUnderstandingService
 
         try
         {
-            var response = await _chatClient.CompleteChatAsync(messages);
+            // Pass cancellationToken: if the HTTP request is aborted, this Azure
+            // OpenAI call is cancelled immediately, preventing orphaned token spend.
+            var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
             return response.Value.Content[0].Text.Trim();
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is expected behaviour – log as informational, not error.
+            _logger.LogInformation("Intent classification cancelled by client disconnect");
+            throw; // Re-throw so the pipeline unwinds cleanly
         }
         catch (Exception ex)
         {
@@ -281,7 +302,12 @@ public class AiUnderstandingService
 
     // Generates concise, query-aware live labels for each processing stage.
     // This is a single AI call so we avoid per-stage latency overhead.
-    public async Task<Dictionary<string, string>> GenerateProcessingLabelsAsync(string userQuestion, string? intentHint = null)
+    // cancellationToken: forwarded to Azure OpenAI so the call is cancelled
+    // immediately when the request is aborted.
+    public async Task<Dictionary<string, string>> GenerateProcessingLabelsAsync(
+        string userQuestion,
+        string? intentHint = null,
+        CancellationToken cancellationToken = default)
     {
         var systemPrompt = """
             You generate short live progress labels for an LC chatbot.
@@ -312,8 +338,10 @@ public class AiUnderstandingService
 
         try
         {
-            var response = await _chatClient.CompleteChatAsync(messages);
-            var raw = response.Value.Content[0].Text.Trim();
+            // Pass cancellationToken: if the request is aborted, this call stops
+            // immediately rather than consuming tokens for a discarded response.
+            var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
+            var raw      = response.Value.Content[0].Text.Trim();
 
             var labels = JsonSerializer.Deserialize<Dictionary<string, string>>(
                 raw,
@@ -332,6 +360,12 @@ public class AiUnderstandingService
             }
 
             return sanitized;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation is expected – log informational only.
+            _logger.LogInformation("Processing label generation cancelled by client disconnect");
+            throw;
         }
         catch (Exception ex)
         {

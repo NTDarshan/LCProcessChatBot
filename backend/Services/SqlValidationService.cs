@@ -2,34 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace backend.Services;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  SqlValidationService  –  pure C# SQL safety guard.
-//  Zero AI calls, zero DB calls. Runs before every generated SQL is executed.
-//
-//  FIXES vs previous version:
-//  1. REMOVED "DECLARE" from ForbiddenKeywords
-//     The AI sometimes writes DECLARE in CTEs or temp calculations.
-//     It is harmless on a read-only connection and was causing ~40% of queries
-//     to fail validation and return "No data found" to the user.
-//
-//  2. REMOVED "SET " (with trailing space) from ForbiddenKeywords
-//     "SET " was matching "SETTLEMENT", "DATASET", "OFFSET" inside column values
-//     or string literals. This was a false-positive factory.
-//
-//  3. REMOVED "PRINT", "RAISERROR", "THROW", "CURSOR", "LINKED", "OPENQUERY",
-//     "OPENDATASOURCE" from ForbiddenKeywords
-//     These are harmless on a read-only SQL Server connection. They were causing
-//     auto-retry to fire unnecessarily and still fail on the second attempt,
-//     wasting tokens and returning errors.
-//
-//  4. KEPT only truly destructive keywords that a read-only connection
-//     cannot execute anyway, but belt-and-suspenders to guard against them.
-//
-//  5. "SET " false positive fix: the old pattern matched "OFFSET" in
-//     ORDER BY ... OFFSET X ROWS FETCH NEXT Y ROWS (pagination SQL).
-//     Now removed entirely — the SELECT-only first check protects against
-//     SET being used maliciously.
-// ─────────────────────────────────────────────────────────────────────────────
 public class SqlValidationService
 {
     private static readonly HashSet<string> AllowedTables = new(StringComparer.OrdinalIgnoreCase)
@@ -41,9 +13,6 @@ public class SqlValidationService
         "business_lines"
     };
 
-    // ONLY truly destructive keywords that should never appear in a read query.
-    // Do NOT add DECLARE, SET, PRINT, CURSOR etc — they are not dangerous on
-    // a read-only connection and cause false positives on legitimate SQL patterns.
     private static readonly string[] ForbiddenKeywords =
     [
         "UPDATE",
