@@ -129,6 +129,7 @@ export class LcComparisonComponent implements OnInit {
     if (value == null) return '—';
     const n = parseFloat(String(value));
     if (isNaN(n)) return '—';
+    if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + 'B';
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
     return new Intl.NumberFormat('en-US').format(Math.round(n));
   }

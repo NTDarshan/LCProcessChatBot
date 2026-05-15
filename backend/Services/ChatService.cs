@@ -715,7 +715,8 @@ public class ChatService
         string aiResponse;
         if (dbRows.Count == 0)
         {
-            aiResponse = "No records found";
+            aiResponse   = BuildNoResultsMessage(entities);
+            responseType = "text_only";
         }
         else
         {
@@ -800,22 +801,45 @@ public class ChatService
     /// </summary>
     private QueryRoutingDecision DetermineRouting(string intent)
     {
-        if (_intentRouter.HasIntent(intent))
-        {
-            return new QueryRoutingDecision
-            {
-                UseIntentRouter = true,
-                Intent          = intent,
-                Reason          = $"Intent '{intent}' is registered in IntentRouterService — using predefined SQL."
-            };
-        }
-
+        // Always route through SqlGenerationService so every question goes through
+        // the 4-phase AI pipeline, getting correct dynamic columns, responseType,
+        // and chart selection instead of hardcoded IntentRouterService SQL.
         return new QueryRoutingDecision
         {
             UseIntentRouter = false,
             Intent          = intent,
-            Reason          = $"Intent '{intent}' has no predefined SQL — falling back to SqlGenerationService."
+            Reason          = "All questions routed to SqlGenerationService — intent router disabled."
         };
+    }
+
+    // ── BuildNoResultsMessage ─────────────────────────────────────────────────
+    // Returns a clarification message when SQL returns 0 rows, naming the
+    // specific filters that were applied so the user knows what to correct.
+    private static string BuildNoResultsMessage(QueryEntitiesDto entities)
+    {
+        var filters = new List<string>();
+        if (!string.IsNullOrWhiteSpace(entities.BankName))
+            filters.Add($"bank \"{entities.BankName}\"");
+        if (!string.IsNullOrWhiteSpace(entities.CustomerName))
+            filters.Add($"customer \"{entities.CustomerName}\"");
+        if (!string.IsNullOrWhiteSpace(entities.Status))
+            filters.Add($"status \"{entities.Status}\"");
+        if (!string.IsNullOrWhiteSpace(entities.LcNumber))
+            filters.Add($"LC number \"{entities.LcNumber}\"");
+        if (entities.StartDate.HasValue || entities.EndDate.HasValue)
+        {
+            var from = entities.StartDate.HasValue ? entities.StartDate.Value.ToString("dd MMM yyyy") : "…";
+            var to   = entities.EndDate.HasValue   ? entities.EndDate.Value.ToString("dd MMM yyyy")   : "…";
+            filters.Add($"date range {from} – {to}");
+        }
+
+        if (filters.Count == 0)
+            return "No records found for your query. Try broadening the search criteria.";
+
+        var joined = string.Join(", ", filters);
+        return $"No records found for {joined}. " +
+               "Please verify the details — the name or value might not exactly match what is in the system. " +
+               "Try checking for alternate spellings, or ask with a broader filter.";
     }
 
     // ── BuildResponseLabel ────────────────────────────────────────────────────

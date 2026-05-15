@@ -102,19 +102,18 @@ export class ChatMessageComponent {
   get effectiveResponseType(): string {
     const base = this.message().responseType ?? 'table';
     const data = this.rows;
+    const queryType = this.message().queryType;
 
-    // Existing auto-upgrades (unchanged)
-    if (base === 'table' && this.message().intent === 'LcStatus' && data.length === 1)
-      return 'detail_card';
     if (base === 'bank_chart' && data.length === 2)
       return 'comparison';
 
-    // New auto-upgrades
-    // Single-row KPI response
     if (base === 'table' && data.length === 1 && data[0]?.['TotalActiveLCs'] !== undefined)
       return 'kpi_strip';
-    // Trend metric_cards → line_chart
-    if (base === 'metric_cards' && this.message().queryType === 'trend')
+
+    if (base === 'table' && data.length === 1 && queryType !== 'aggregate' && queryType !== 'single_stat')
+      return 'detail_card';
+
+    if (base === 'metric_cards' && queryType === 'trend')
       return 'line_chart';
 
     return base;
@@ -142,4 +141,11 @@ const FOLLOW_UP_MAP: Record<string, string[]> = {
   'risk_scorecard': ['Show critical LCs ↗', 'Show expired LCs ↗', 'Show overdue LCs ↗'],
   'expiry_heatmap': ['Show expiring this month ↗', 'Show expired LCs ↗'],
   'mixed_chart':    ['Show trend by bank ↗', 'Show this year vs last year ↗'],
+  'table':          ['Show status breakdown ↗', 'Show by bank ↗', 'Filter by expiry ↗'],
+  'bank_chart':     ['Compare top 2 banks ↗', 'Show issued LCs ↗', 'Show pending approvals ↗'],
+  'metric_cards':   ['Show as chart ↗', 'Show full list ↗', 'Filter by bank ↗'],
+  'approval_list':  ['Show all pending ↗', 'Show expired LCs ↗', 'Show by bank ↗'],
+  'timeline':       ['Show all amendments ↗', 'Show invoice status ↗'],
+  'detail_card':    ['Show all issued LCs ↗', 'Show LC history ↗', 'Show invoice for this LC ↗'],
+  'comparison':     ['Add a third bank ↗', 'Show issued only ↗', 'Show by customer ↗'],
 };

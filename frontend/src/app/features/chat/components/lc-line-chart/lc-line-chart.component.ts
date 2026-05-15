@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnInit, OnDestroy,
+  Component, Input, OnDestroy, OnChanges, SimpleChanges,
   ElementRef, ViewChild, AfterViewInit, ChangeDetectionStrategy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -32,7 +32,7 @@ Chart.register(...registerables);
     .canvas-box canvas { width:100% !important; }
   `]
 })
-export class LcLineChartComponent implements AfterViewInit, OnDestroy {
+export class LcLineChartComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() data: any[] = [];
   @Input() intent?: string;
   @Input() queryType?: string;
@@ -49,6 +49,14 @@ export class LcLineChartComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void { this.buildChart(); }
   ngOnDestroy(): void { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = undefined;
+      this.buildChart();
+    }
+  }
 
   private buildChart(): void {
     const labels = this.data.map(d => d['MonthLabel'] ?? d['Date'] ?? d['Period'] ?? '');

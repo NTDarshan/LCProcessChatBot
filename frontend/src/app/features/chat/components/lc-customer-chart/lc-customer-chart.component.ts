@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnInit, OnDestroy, AfterViewInit,
+  Component, Input, OnInit, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -123,7 +123,7 @@ interface CustomerRow {
     .amt { font-weight: 600; color: #111827; }
   `]
 })
-export class LcCustomerChartComponent implements OnInit, AfterViewInit, OnDestroy {
+export class LcCustomerChartComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @Input() data: Record<string, unknown>[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
@@ -161,7 +161,22 @@ export class LcCustomerChartComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
-  ngOnInit() {
+  ngOnInit() { this.mapRows(); }
+
+  ngAfterViewInit() { this.buildChart(); }
+
+  ngOnDestroy() { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = null;
+      this.mapRows();
+      this.buildChart();
+    }
+  }
+
+  private mapRows(): void {
     this.rows = this.data
       .map(d => ({
         customer: String(d['CustomerName'] ?? d['SapCustomerName'] ?? '—'),
@@ -173,9 +188,6 @@ export class LcCustomerChartComponent implements OnInit, AfterViewInit, OnDestro
       }))
       .sort((a, b) => b.lcCount - a.lcCount);
   }
-
-  ngAfterViewInit() { this.buildChart(); }
-  ngOnDestroy() { this.chart?.destroy(); }
 
   sortBy(key: keyof CustomerRow) {
     if (this.sortKey === key) { this.sortAsc = !this.sortAsc; }
@@ -244,6 +256,7 @@ export class LcCustomerChartComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   fmtAmt(n: number): string {
+    if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
     return String(Math.round(n));

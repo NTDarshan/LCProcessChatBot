@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnInit, OnDestroy, AfterViewInit,
+  Component, Input, OnInit, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -111,7 +111,7 @@ type SortKey = 'bank' | 'lcCount' | 'total' | 'issued' | 'paid' | 'pending';
     .amt-cell { font-weight: 600; color: #111827; }
   `]
 })
-export class LcBankChartComponent implements OnInit, AfterViewInit, OnDestroy {
+export class LcBankChartComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @Input() data: Record<string, unknown>[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
@@ -142,7 +142,20 @@ export class LcBankChartComponent implements OnInit, AfterViewInit, OnDestroy {
     });
   }
 
-  ngOnInit() {
+  ngOnInit() { this.mapRows(); }
+
+  ngAfterViewInit() { this.buildChart(); }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = null;
+      this.mapRows();
+      this.buildChart();
+    }
+  }
+
+  private mapRows() {
     this.rows = this.data
       .map(d => ({
         bank:    String(d['Bank'] ?? '—'),
@@ -154,8 +167,6 @@ export class LcBankChartComponent implements OnInit, AfterViewInit, OnDestroy {
       }))
       .sort((a, b) => b.total - a.total);
   }
-
-  ngAfterViewInit() { this.buildChart(); }
 
   ngOnDestroy() { this.chart?.destroy(); }
 
@@ -208,6 +219,7 @@ export class LcBankChartComponent implements OnInit, AfterViewInit, OnDestroy {
               callback: (v) => {
                 if (v == null) return v;
                 const n = Number(v);
+                if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
                 if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
                 if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
                 return String(n);
@@ -225,6 +237,7 @@ export class LcBankChartComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   fmtAmt(n: number): string {
+    if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K`;
     return String(Math.round(n));

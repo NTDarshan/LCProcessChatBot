@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnInit, OnDestroy, AfterViewInit,
+  Component, Input, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -34,13 +34,21 @@ const PALETTE_ALPHA = ['rgba(24,95,165,0.15)','rgba(239,159,39,0.15)','rgba(99,1
       background:rgba(24,95,165,0.12); color:#185FA5; font-weight:600; }
   `]
 })
-export class LcRadarChartComponent implements AfterViewInit, OnDestroy {
+export class LcRadarChartComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() data: any[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
   private chart?: Chart;
 
   ngAfterViewInit(): void { this.buildChart(); }
   ngOnDestroy(): void { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = undefined;
+      this.buildChart();
+    }
+  }
 
   private buildChart(): void {
     const axes = ['LcCount','TotalLcValue','IssuedCount','PaidCount','PendingCount','RejectedCount'];

@@ -1,23 +1,39 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LcStatusChartComponent }   from '../lc-status-chart/lc-status-chart.component';
+import { LcCustomerChartComponent } from '../lc-customer-chart/lc-customer-chart.component';
+import { LcLineChartComponent }     from '../lc-line-chart/lc-line-chart.component';
 
 @Component({
   selector: 'app-lc-metric-cards',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LcStatusChartComponent, LcCustomerChartComponent, LcLineChartComponent],
   template: `
-    @if (data.length > 0) {
-      <div class="metric-grid">
-        @for (item of data; track $index) {
-          <div class="metric-card">
-            <div class="metric-label">{{ getLabel(item) }}</div>
-            <div class="metric-value">{{ getValue(item) }}</div>
-            @if (getSub(item)) {
-              <div class="metric-sub">{{ getSub(item) }}</div>
+    @switch (chartType) {
+      @case ('doughnut') {
+        <app-lc-status-chart [data]="data" />
+      }
+      @case ('stacked_bar') {
+        <app-lc-customer-chart [data]="data" />
+      }
+      @case ('line') {
+        <app-lc-line-chart [data]="data" />
+      }
+      @default {
+        @if (data.length > 0) {
+          <div class="metric-grid">
+            @for (item of data; track $index) {
+              <div class="metric-card">
+                <div class="metric-label">{{ getLabel(item) }}</div>
+                <div class="metric-value">{{ getValue(item) }}</div>
+                @if (getSub(item)) {
+                  <div class="metric-sub">{{ getSub(item) }}</div>
+                }
+              </div>
             }
           </div>
         }
-      </div>
+      }
     }
   `,
   styles: [`
@@ -47,25 +63,61 @@ export class LcMetricCardsComponent {
   @Input() chartType: string | null = null;
 
   getLabel(item: Record<string, unknown>): string {
-    return String(
-      item['application_status'] ?? item['Status'] ??
-      item['CustomerName'] ?? item['beneficiary'] ??
-      item['Bank'] ?? item['bank'] ?? '—'
-    );
+    const LABEL_KEYS = ['HumanLabel', 'StatusLabel', 'Bank', 'CustomerName',
+      'application_status', 'Status', 'MonthLabel', 'Date'];
+    for (const k of LABEL_KEYS) {
+      const v = item[k];
+      if (v != null && v !== '') return String(v);
+    }
+    for (const k of Object.keys(item)) {
+      const v = item[k];
+      if (typeof v === 'string' && v !== '' && isNaN(Number(v))) return v;
+    }
+    const firstKey = Object.keys(item)[0] ?? '';
+    return firstKey.replace(/([A-Z])/g, ' $1').trim() || '—';
   }
 
   getValue(item: Record<string, unknown>): string {
-    const v = item['Count'] ?? item['LcCount'] ?? item['AmendmentCount'];
-    return v != null ? String(v) : '—';
+    const COUNT_KEYS = ['Count', 'LcCount', 'AvgDaysToIssuance', 'TotalIssuedLCs',
+      'AmendmentCount', 'IssuedCount', 'PaidCount', 'PendingCount'];
+    for (const k of COUNT_KEYS) {
+      const v = item[k];
+      if (v != null) {
+        const n = parseFloat(String(v));
+        if (isFinite(n)) return Number.isInteger(n) ? String(n) : n.toFixed(1);
+      }
+    }
+    for (const k of Object.keys(item)) {
+      const v = item[k];
+      if (v != null) {
+        const n = parseFloat(String(v));
+        if (isFinite(n)) return Number.isInteger(n) ? String(n) : n.toFixed(1);
+      }
+    }
+    return '—';
   }
 
   getSub(item: Record<string, unknown>): string {
-    const raw = item['TotalAmount'] ?? item['TotalLcValue'] ?? item['TotalValue'] ?? item['lc_amount'];
-    if (raw == null) return '';
-    const n = parseFloat(String(raw));
-    if (isNaN(n)) return '';
-    const cur = String(item['Currency'] ?? item['currency'] ?? '');
-    const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
-    return `${cur} ${fmt}`.trim();
+    const AMT_KEYS = ['TotalAmount', 'TotalLcValue', 'TotalValue', 'LcAmount'];
+    for (const k of AMT_KEYS) {
+      const raw = item[k];
+      if (raw != null) {
+        const n = parseFloat(String(raw));
+        if (!isNaN(n)) {
+          let fmt: string;
+          if (n >= 1_000_000_000)      fmt = `${(n / 1_000_000_000).toFixed(2)}B`;
+          else if (n >= 1_000_000)     fmt = `${(n / 1_000_000).toFixed(2)}M`;
+          else if (n >= 1_000)         fmt = `${(n / 1_000).toFixed(1)}K`;
+          else fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
+          const cur = String(item['Currency'] ?? item['currency'] ?? '');
+          return cur ? `${cur} ${fmt}` : fmt;
+        }
+      }
+    }
+    const min = item['MinDays'], max = item['MaxDays'];
+    if (min != null && max != null) return `${min}–${max} days`;
+    if (min != null) return `min ${min} days`;
+    if (max != null) return `max ${max} days`;
+    return '';
   }
 }

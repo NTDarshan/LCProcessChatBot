@@ -135,9 +135,8 @@ public class AiUnderstandingService
         (["breakdown"],                         "StatusBreakdown"),
         (["statistics"],                        "StatusBreakdown"),
         (["overview"],                          "StatusBreakdown"),
-        (["count"],                             "StatusBreakdown"),
-        (["how", "many"],                       "StatusBreakdown"),
-        (["total"],                             "StatusBreakdown"),
+        (["how", "many", "lc"],                 "StatusBreakdown"),
+        (["total", "status"],                   "StatusBreakdown"),
     ];
 
     public AiUnderstandingService(

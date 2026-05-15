@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnDestroy, AfterViewInit,
+  Component, Input, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -44,12 +44,23 @@ function bankColorIdx(bank: string, idx: number): string {
     .note { font-size:10px; color:#999; margin:0 0 8px; }
   `]
 })
-export class LcBubbleChartComponent implements AfterViewInit, OnDestroy {
+export class LcBubbleChartComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() data: any[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
   private chart?: Chart;
 
-  ngAfterViewInit(): void {
+  ngAfterViewInit(): void { this.buildChart(); }
+  ngOnDestroy(): void { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = undefined;
+      this.buildChart();
+    }
+  }
+
+  private buildChart(): void {
     const datasets = this.data.map((row, i) => {
       const x = row['TotalLcValue'] ?? row['LcAmount'] ?? 0;
       const y = row['AvgDaysPending'] ?? row['AvgDaysToIssuance'] ?? row['DaysPending'] ?? 0;
@@ -98,6 +109,4 @@ export class LcBubbleChartComponent implements AfterViewInit, OnDestroy {
       }
     });
   }
-
-  ngOnDestroy(): void { this.chart?.destroy(); }
 }

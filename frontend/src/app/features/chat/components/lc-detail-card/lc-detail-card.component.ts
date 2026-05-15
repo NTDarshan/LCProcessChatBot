@@ -1,6 +1,39 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
+const COLUMN_LABELS: Record<string, string> = {
+  LcNumber: 'LC Number', Bank: 'Bank', CustomerName: 'Customer',
+  SapCustomerName: 'SAP Name', LcAmount: 'LC Amount', RequestedAmount: 'Req. Amount',
+  Currency: 'Currency', TypeOfLC: 'Type', TypeOfLcRequested: 'Type',
+  LcIssueDate: 'Issue Date', LcExpiryDate: 'Expiry Date', GracePeriod: 'Grace Period',
+  IsExpired: 'Expired', AmiPaymentDate: 'Pmt Date', BeneficiaryOnLC: 'Beneficiary',
+  PaymentTerms: 'Payment Terms', PortOfLoading: 'Loading Port',
+  PortOfDischarge: 'Discharge Port', ActualShipmentDate: 'Shipment',
+  PlannedShipmentDate: 'Planned Shipment', RequestCreatedOn: 'Created',
+  Status: 'Status', Product: 'Product', RequestId: 'ID',
+  LcCount: 'LC Count', TotalLcValue: 'Total Value', IssuedCount: 'Issued',
+  PaidCount: 'Paid', PendingCount: 'Pending',
+  AmendmentId: 'Amend ID', AmendedAmount: 'Amended Amount',
+  NewExpiryDate: 'New Expiry', NewPaymentTerms: 'New Terms',
+  AmendedBy: 'Amended By', AmendedOn: 'Amended On',
+  AmendmentCount: 'Amendments', LastAmendedOn: 'Last Amended',
+  InvoiceAmount: 'Invoice Amt', InvoiceDate: 'Invoice Date',
+  IsPaid: 'Paid?', IsFinalUpdate: 'Final?', IsRefunded: 'Refunded?',
+  ExpectedPaymentDate: 'Expected Pmt', BankCharges: 'Bank Charges',
+  Action: 'Action', LogType: 'Type', ActionedBy: 'By', ActionedOn: 'When', Comment: 'Comment',
+  InvoiceId: 'Invoice ID', BusinessUnit: 'BU', SupplierName: 'Supplier',
+  LcStatusDetail: 'LC Status', ContractNumber: 'Contract No', Volume: 'Volume',
+};
+
+const SKIP_KEYS = new Set([
+  'LcNumber', 'ContractNumber', 'Bank', 'IssuingBank', 'Status', 'StatusLabel',
+  'LcAmount', 'RequestedAmount', 'Currency', 'Comment', 'RequestId', 'obj_id',
+]);
+
+const PRIORITY_KEYS = [
+  'CustomerName', 'Product', 'TypeOfLC', 'TypeOfLcRequested', 'PaymentTerms', 'BusinessUnit',
+];
+
 @Component({
   selector: 'app-lc-detail-card',
   standalone: true,
@@ -30,78 +63,24 @@ import { CommonModule } from '@angular/common';
 
         <!-- Two-column grid of key fields -->
         <div class="fields-grid">
-          @if (data['CustomerName']) {
-            <span class="field-label">Customer</span>
-            <span class="field-value">{{ data['CustomerName'] }}</span>
-          }
-          @if (data['Product']) {
-            <span class="field-label">Product</span>
-            <span class="field-value">{{ data['Product'] }}</span>
-          }
-          @if (data['TypeOfLC'] ?? data['TypeOfLcRequested']) {
-            <span class="field-label">Type</span>
-            <span class="field-value">{{ data['TypeOfLC'] ?? data['TypeOfLcRequested'] }}</span>
-          }
-          @if (data['PaymentTerms']) {
-            <span class="field-label">Payment terms</span>
-            <span class="field-value">{{ data['PaymentTerms'] }}</span>
-          }
-          @if (data['LcIssueDate']) {
-            <span class="field-label">Issue date</span>
-            <span class="field-value">{{ formatDate(data['LcIssueDate']) }}</span>
-          }
-          @if (data['LcExpiryDate']) {
-            <span class="field-label">Expiry date</span>
-            <span class="field-value" [class.date-danger]="isDatePast(data['LcExpiryDate'])">
-              {{ formatDate(data['LcExpiryDate']) }}
-              @if (isDatePast(data['LcExpiryDate'])) {
-                <span class="expired-tag">Expired</span>
-              }
-            </span>
-          }
-          @if (data['GracePeriod']) {
-            <span class="field-label">Grace period</span>
-            <span class="field-value" [class.date-warning]="isDateSoon(data['GracePeriod'])">{{ formatDate(data['GracePeriod']) }}</span>
-          }
-          @if (data['AmiPaymentDate']) {
-            <span class="field-label">AMI payment date</span>
-            <span class="field-value">{{ formatDate(data['AmiPaymentDate']) }}</span>
-          }
-          @if (data['BeneficiaryOnLC']) {
-            <span class="field-label">Beneficiary</span>
-            <span class="field-value">{{ data['BeneficiaryOnLC'] }}</span>
-          }
-          @if (data['PortOfLoading']) {
-            <span class="field-label">Port of loading</span>
-            <span class="field-value">{{ data['PortOfLoading'] }}</span>
-          }
-          @if (data['PortOfDischarge']) {
-            <span class="field-label">Port of discharge</span>
-            <span class="field-value">{{ data['PortOfDischarge'] }}</span>
-          }
-          @if (data['BusinessUnit']) {
-            <span class="field-label">Business unit</span>
-            <span class="field-value">{{ data['BusinessUnit'] }}</span>
-          }
-          @if (data['QuantityMt']) {
-            <span class="field-label">Quantity (MT)</span>
-            <span class="field-value">{{ formatNumber(data['QuantityMt']) }}</span>
-          }
-          @if (data['UsdBankCharges']) {
-            <span class="field-label">Bank charges (USD)</span>
-            <span class="field-value">{{ formatAmount(data['UsdBankCharges'], 'USD') }}</span>
-          }
-          @if (data['SapOrderNumber']) {
-            <span class="field-label">SAP order</span>
-            <span class="field-value">{{ data['SapOrderNumber'] }}</span>
-          }
-          @if (asNumber(data['AmendmentCount']) > 0) {
-            <span class="field-label">Amendments</span>
-            <span class="field-value amendment-count">{{ data['AmendmentCount'] }} amendment{{ asNumber(data['AmendmentCount']) > 1 ? 's' : '' }}</span>
-          }
-          @if (data['RequestCreatedOn']) {
-            <span class="field-label">Requested on</span>
-            <span class="field-value">{{ formatDate(data['RequestCreatedOn']) }}</span>
+          @for (field of dynamicFields; track field.key) {
+            <span class="field-label">{{ field.label }}</span>
+            @if (field.key === 'LcExpiryDate') {
+              <span class="field-value" [class.date-danger]="isDatePast(data![field.key])">
+                {{ formatDate(data![field.key]) }}
+                @if (isDatePast(data![field.key])) {
+                  <span class="expired-tag">Expired</span>
+                }
+              </span>
+            } @else if (field.key === 'GracePeriod') {
+              <span class="field-value" [class.date-warning]="isDateSoon(data![field.key])">{{ formatDate(data![field.key]) }}</span>
+            } @else if (isDateKey(field.key)) {
+              <span class="field-value">{{ formatDate(data![field.key]) }}</span>
+            } @else if (isAmountKey(field.key)) {
+              <span class="field-value">{{ formatAmount(data![field.key], data!['Currency']) }}</span>
+            } @else {
+              <span class="field-value">{{ field.value }}</span>
+            }
           }
         </div>
 
@@ -146,6 +125,33 @@ import { CommonModule } from '@angular/common';
 export class LcDetailCardComponent {
   @Input() data: Record<string, unknown> | null = null;
 
+  get dynamicFields(): { key: string; label: string; value: string }[] {
+    if (!this.data) return [];
+    const d = this.data;
+
+    const keys = Object.keys(d).filter(k => {
+      if (SKIP_KEYS.has(k)) return false;
+      const v = d[k];
+      return v !== null && v !== undefined && v !== '';
+    });
+
+    const prioritySet = new Set(PRIORITY_KEYS);
+    const priorityKeys = PRIORITY_KEYS.filter(k => keys.includes(k));
+    const rest = keys.filter(k => !prioritySet.has(k));
+    const dateKeys   = rest.filter(k =>  this.isDateKey(k) && !this.isAmountKey(k)).sort();
+    const amountKeys = rest.filter(k => !this.isDateKey(k) &&  this.isAmountKey(k)).sort();
+    const otherKeys  = rest.filter(k => !this.isDateKey(k) && !this.isAmountKey(k)).sort();
+
+    return [...priorityKeys, ...dateKeys, ...amountKeys, ...otherKeys].map(k => ({
+      key:   k,
+      label: COLUMN_LABELS[k] ?? k.replace(/([A-Z])/g, ' $1').trim(),
+      value: String(d[k] ?? ''),
+    }));
+  }
+
+  isDateKey(key: string): boolean   { return /Date$|On$/.test(key); }
+  isAmountKey(key: string): boolean { return /Amount|Value|Charges|Total/i.test(key); }
+
   asNumber(v: unknown): number { return parseFloat(String(v ?? 0)) || 0; }
 
   getStatusClass(status: unknown): string {
@@ -172,9 +178,10 @@ export class LcDetailCardComponent {
     if (value == null) return '—';
     const n = parseFloat(String(value));
     if (isNaN(n)) return '—';
-    const formatted = n >= 1_000_000
-      ? (n / 1_000_000).toFixed(2) + 'M'
-      : new Intl.NumberFormat('en-US').format(Math.round(n));
+    let formatted: string;
+    if (n >= 1_000_000_000) formatted = (n / 1_000_000_000).toFixed(2) + 'B';
+    else if (n >= 1_000_000) formatted = (n / 1_000_000).toFixed(2) + 'M';
+    else formatted = new Intl.NumberFormat('en-US').format(Math.round(n));
     return currency ? `${currency} ${formatted}` : formatted;
   }
 

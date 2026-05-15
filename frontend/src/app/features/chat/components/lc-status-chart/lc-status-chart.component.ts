@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnInit, OnDestroy, AfterViewInit,
+  Component, Input, OnInit, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -96,7 +96,7 @@ const STATUS_LABELS: Record<string, string> = {
     .summary-text { font-size: 12px; color: #6b7280; margin: 0; }
   `]
 })
-export class LcStatusChartComponent implements OnInit, AfterViewInit, OnDestroy {
+export class LcStatusChartComponent implements OnInit, AfterViewInit, OnDestroy, OnChanges {
   @Input() data: Record<string, unknown>[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
@@ -104,7 +104,22 @@ export class LcStatusChartComponent implements OnInit, AfterViewInit, OnDestroy 
   total = 0;
   chart: Chart | null = null;
 
-  ngOnInit() {
+  ngOnInit() { this.mapRows(); }
+
+  ngAfterViewInit() { this.buildChart(); }
+
+  ngOnDestroy() { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = null;
+      this.mapRows();
+      this.buildChart();
+    }
+  }
+
+  private mapRows(): void {
     this.total = this.data.reduce((s, d) => s + (Number(d['Count'] ?? d['LcCount'] ?? 0)), 0);
     this.statusRows = this.data
       .map(d => {
@@ -120,10 +135,6 @@ export class LcStatusChartComponent implements OnInit, AfterViewInit, OnDestroy 
       })
       .sort((a, b) => b.count - a.count);
   }
-
-  ngAfterViewInit() { this.buildChart(); }
-
-  ngOnDestroy() { this.chart?.destroy(); }
 
   private buildChart() {
     if (!this.canvasRef || !this.statusRows.length) return;

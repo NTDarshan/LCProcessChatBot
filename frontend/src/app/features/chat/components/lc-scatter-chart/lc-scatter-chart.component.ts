@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnInit, OnDestroy, AfterViewInit,
+  Component, Input, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -47,13 +47,21 @@ function bankColor(bank: string, idx: number): string {
     .quadrant-note { font-size:10px; color:#999; margin-top:6px; }
   `]
 })
-export class LcScatterChartComponent implements AfterViewInit, OnDestroy {
+export class LcScatterChartComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() data: any[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
   private chart?: Chart;
 
   ngAfterViewInit(): void { this.buildChart(); }
   ngOnDestroy(): void { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = undefined;
+      this.buildChart();
+    }
+  }
 
   private buildChart(): void {
     // Group by bank

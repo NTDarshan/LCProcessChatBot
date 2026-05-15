@@ -43,13 +43,7 @@
 
 
             @case ('metric_cards') {
-              @if (msg.intent === 'StatusBreakdown') {
-                <app-lc-status-chart [data]="rows" />
-              } @else if (msg.intent === 'CustomerLC') {
-                <app-lc-customer-chart [data]="rows" />
-              } @else {
-                <app-lc-metric-cards [data]="rows" [intent]="msg.intent ?? ''" [chartType]="msg.chartType ?? null" />
-              }
+              <app-lc-metric-cards [data]="rows" [intent]="msg.intent ?? ''" [chartType]="msg.chartType ?? null" />
             }
 
             @case ('bank_chart') {

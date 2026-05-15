@@ -1,5 +1,5 @@
 import {
-  Component, Input, OnDestroy, AfterViewInit,
+  Component, Input, OnDestroy, AfterViewInit, OnChanges, SimpleChanges,
   ElementRef, ViewChild, ChangeDetectionStrategy
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -53,12 +53,23 @@ function getStatusColor(status: string): string {
       background:rgba(24,95,165,0.12); color:#185FA5; font-weight:600; }
   `]
 })
-export class LcPolarChartComponent implements AfterViewInit, OnDestroy {
+export class LcPolarChartComponent implements AfterViewInit, OnDestroy, OnChanges {
   @Input() data: any[] = [];
   @ViewChild('chartCanvas') canvasRef!: ElementRef<HTMLCanvasElement>;
   private chart?: Chart;
 
-  ngAfterViewInit(): void {
+  ngAfterViewInit(): void { this.buildChart(); }
+  ngOnDestroy(): void { this.chart?.destroy(); }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['data'] && !changes['data'].firstChange) {
+      this.chart?.destroy();
+      this.chart = undefined;
+      this.buildChart();
+    }
+  }
+
+  private buildChart(): void {
     const labels = this.data.map(d => d['HumanLabel'] ?? d['Status'] ?? '');
     const counts  = this.data.map(d => d['Count'] ?? d['LcCount'] ?? 0);
     const colors  = this.data.map(d => getStatusColor(d['HumanLabel'] ?? d['Status'] ?? ''));
@@ -93,6 +104,4 @@ export class LcPolarChartComponent implements AfterViewInit, OnDestroy {
       }
     });
   }
-
-  ngOnDestroy(): void { this.chart?.destroy(); }
 }

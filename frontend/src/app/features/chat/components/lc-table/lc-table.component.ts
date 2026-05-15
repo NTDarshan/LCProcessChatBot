@@ -3,25 +3,6 @@ import { CommonModule } from '@angular/common';
 
 interface ColDef { key: string; label: string; type: string; }
 
-const INTENT_COLUMN_MAP: Record<string, string[]> = {
-  IssuedLC:          ['LcNumber','Bank','CustomerName','LcAmount','Currency','TypeOfLC','LcIssueDate','LcExpiryDate','GracePeriod','BeneficiaryOnLC','PaymentTerms'],
-  PaidLC:            ['LcNumber','Bank','CustomerName','LcAmount','Currency','TypeOfLC','AmiPaymentDate','LcIssueDate','BeneficiaryOnLC'],
-  DraftLC:           ['RequestId','Bank','Product','CustomerName','RequestedAmount','Currency','TypeOfLcRequested','PlannedShipmentDate','RequestCreatedOn','Status'],
-  RejectedLC:        ['RequestId','Bank','Product','CustomerName','RequestedAmount','Currency','Status','RequestCreatedOn'],
-  CancelledLC:       ['RequestId','Bank','Product','CustomerName','RequestedAmount','Currency','Status','RequestCreatedOn'],
-  ValidationPending: ['RequestId','Bank','Product','CustomerName','RequestedAmount','Currency','Status','RequestCreatedOn'],
-  ExpiringLC:        ['LcNumber','Bank','CustomerName','LcAmount','Currency','LcExpiryDate','GracePeriod','IsExpired','PaymentTerms','TypeOfLC'],
-  ExpiredLC:         ['LcNumber','Bank','CustomerName','LcAmount','Currency','LcExpiryDate','GracePeriod','BeneficiaryOnLC'],
-  OutstandingLC:     ['LcNumber','Bank','CustomerName','LcAmount','Currency','LcExpiryDate','InvoiceAmount','IsPaid','ExpectedPaymentDate','BankCharges'],
-  DelayedRequests:   ['RequestId','Bank','Product','CustomerName','RequestedAmount','Currency','Status','RequestCreatedOn'],
-  AmendmentRequests: ['AmendmentId','LcNumber','Bank','CustomerName','AmendedAmount','Currency','NewExpiryDate','NewPaymentTerms','AmendedBy','AmendedOn'],
-  InvoiceStatus:     ['LcNumber','Bank','CustomerName','InvoiceAmount','Currency','InvoiceDate','IsPaid','IsFinalUpdate','ExpectedPaymentDate','IsRefunded'],
-  CustomerLC:        ['CustomerName','SapCustomerName','LcCount','TotalLcValue','IssuedCount','PaidCount','PendingCount'],
-  AmendmentCount:    ['LcNumber','Bank','CustomerName','LcAmount','Currency','AmendmentCount','LastAmendedOn','Status'],
-  LcStatus:          ['LcNumber','Bank','CustomerName','LcAmount','Currency','Status','TypeOfLC','LcIssueDate','LcExpiryDate','GracePeriod','PaymentTerms','BeneficiaryOnLC'],
-  LcHistory:         ['Action','LogType','ActionedBy','ActionedOn','Comment'],
-};
-
 const COLUMN_LABELS: Record<string, string> = {
   LcNumber: 'LC Number', Bank: 'Bank', CustomerName: 'Customer',
   SapCustomerName: 'SAP Name', LcAmount: 'LC Amount', RequestedAmount: 'Req. Amount',
@@ -55,13 +36,28 @@ const COUNT_COLS   = new Set(['LcCount','IssuedCount','PaidCount','PendingCount'
 
 function colType(key: string): string {
   if (AMOUNT_COLS.has(key))  return 'amount';
+  if (/amount|value|charges|total/i.test(key) && !/count$/i.test(key)) return 'amount';
+
   if (DATE_COLS.has(key))    return 'date';
+  if (/date$|on$/i.test(key)) return 'date';
+
   if (STATUS_COLS.has(key))  return 'status';
+  if (key === 'StatusLabel' || key === 'HumanLabel') return 'status';
+
   if (EXPIRED_COLS.has(key)) return 'expired';
+
   if (BOOLEAN_COLS.has(key)) return 'boolean';
+  if (/^Is[A-Z]/.test(key))  return 'boolean';
+
   if (COUNT_COLS.has(key))   return 'count';
+  if (/count$/i.test(key) || /days/i.test(key) ||
+      key === 'DaysPending' || key === 'DaysOverdue' || key === 'DaysToIssuance' ||
+      key === 'MinDays' || key === 'MaxDays' || key === 'AvgDaysToIssuance') return 'count';
+
   return 'text';
 }
+
+const INTERNAL_KEYS = new Set(['obj_id', 'RequestId', 'id', 'ID', 'lc_request_id']);
 
 @Component({
   selector: 'app-lc-table',
@@ -78,7 +74,9 @@ function colType(key: string): string {
             <thead>
               <tr>
                 @for (col of visibleColumns; track col.key; let i = $index) {
-                  <th [class.sticky-col]="i === 0">{{ col.label }}</th>
+                  <th [class.sticky-col]="i === 0" (click)="sortBy(col.key)" style="cursor:pointer">
+                    {{ col.label }}{{ sortKey === col.key ? (sortAsc ? ' ↑' : ' ↓') : '' }}
+                  </th>
                 }
               </tr>
             </thead>
@@ -196,30 +194,56 @@ export class LcTableComponent implements OnInit {
   showAll = false;
   visibleColumns: ColDef[] = [];
   rows: Record<string, unknown>[] = [];
+  sortKey = '';
+  sortAsc = true;
 
   ngOnInit() {
     this.rows = this.data;
     this.buildVisibleColumns();
   }
 
-  get displayRows() { return this.showAll ? this.rows : this.rows.slice(0, 8); }
+  get displayRows() {
+    let sorted = [...this.rows];
+    if (this.sortKey) {
+      const col = this.visibleColumns.find(c => c.key === this.sortKey);
+      const type = col?.type ?? 'text';
+      sorted.sort((a, b) => {
+        const av = a[this.sortKey];
+        const bv = b[this.sortKey];
+        let cmp = 0;
+        if (type === 'amount' || type === 'count') {
+          cmp = (parseFloat(String(av ?? 0)) || 0) - (parseFloat(String(bv ?? 0)) || 0);
+        } else if (type === 'date') {
+          cmp = new Date(String(av ?? '')).getTime() - new Date(String(bv ?? '')).getTime();
+        } else {
+          cmp = String(av ?? '').toLowerCase().localeCompare(String(bv ?? '').toLowerCase());
+        }
+        return this.sortAsc ? cmp : -cmp;
+      });
+    }
+    return this.showAll ? sorted : sorted.slice(0, 8);
+  }
+
+  sortBy(key: string) {
+    if (this.sortKey === key) {
+      this.sortAsc = !this.sortAsc;
+    } else {
+      this.sortKey = key;
+      this.sortAsc = true;
+    }
+  }
 
   private buildVisibleColumns() {
     if (!this.rows.length) return;
-    const keys = INTENT_COLUMN_MAP[this.intent];
-
-    if (keys) {
-      // Intent-aware: preserve map order, only include cols present & non-null
-      this.visibleColumns = keys
-        .filter(k => this.rows.some(r => r[k] != null))
-        .map(k => ({ key: k, label: COLUMN_LABELS[k] ?? k, type: colType(k) }));
-    } else {
-      // Fallback: all non-null keys from first row
-      const first = this.rows[0];
-      this.visibleColumns = Object.keys(first)
-        .filter(k => this.rows.some(r => r[k] != null))
-        .map(k => ({ key: k, label: COLUMN_LABELS[k] ?? k, type: colType(k) }));
-    }
+    const first = this.rows[0];
+    this.visibleColumns = Object.keys(first)
+      .filter(k => !INTERNAL_KEYS.has(k))
+      .filter(k => this.rows.some(r => r[k] != null))
+      .map(k => ({
+        key: k,
+        label: COLUMN_LABELS[k] ?? k.replace(/([A-Z])/g, ' $1').trim(),
+        type: colType(k)
+      }));
   }
 
   formatStatus(v: unknown): string {
@@ -249,6 +273,7 @@ export class LcTableComponent implements OnInit {
     const n = parseFloat(String(v));
     if (isNaN(n)) return '—';
     const cur = currency ? `${currency} ` : '';
+    if (n >= 1_000_000_000) return `${cur}${(n / 1_000_000_000).toFixed(2)}B`;
     if (n >= 1_000_000) return `${cur}${(n / 1_000_000).toFixed(2)}M`;
     if (n >= 1_000)     return `${cur}${(n / 1_000).toFixed(0)}K`;
     return `${cur}${new Intl.NumberFormat('en-US').format(Math.round(n))}`;
