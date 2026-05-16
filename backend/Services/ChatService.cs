@@ -22,8 +22,10 @@ public class ChatService
     private readonly SqlGenerationService _sqlGeneration;
     private readonly SqlValidationService _sqlValidation;
     private readonly CacheService _cache;
+    private readonly SuggestedQuestionsService _suggestedQuestionsService;
+    private readonly ClarificationService _clarificationService;
 
-    public ChatService(DomainValidationService domainValidator,AiUnderstandingService aiUnderstanding,AiResponseService aiResponse,IntentRouterService intentRouter,EntityExtractionService entityExtractor,SessionService sessionService,ChatHistoryService historyService,ISqlRepository db,ILogger<ChatService> logger,IConfiguration config,SqlGenerationService sqlGeneration,SqlValidationService sqlValidation,CacheService cache)
+    public ChatService(DomainValidationService domainValidator,AiUnderstandingService aiUnderstanding,AiResponseService aiResponse,IntentRouterService intentRouter,EntityExtractionService entityExtractor,SessionService sessionService,ChatHistoryService historyService,ISqlRepository db,ILogger<ChatService> logger,IConfiguration config,SqlGenerationService sqlGeneration,SqlValidationService sqlValidation,CacheService cache,SuggestedQuestionsService suggestedQuestionsService,ClarificationService clarificationService)
     {
         _domainValidator = domainValidator;
         _aiUnderstanding = aiUnderstanding;
@@ -38,6 +40,8 @@ public class ChatService
         _sqlGeneration = sqlGeneration;
         _sqlValidation = sqlValidation;
         _cache = cache;
+        _suggestedQuestionsService = suggestedQuestionsService;
+        _clarificationService = clarificationService;
     }
 
     // ── ResponseType map ──────────────────────────────────────────────────────
@@ -198,7 +202,7 @@ public class ChatService
 
             return new ChatResponseDto
             {
-                Response = "I can only assist with LC-related queries.",
+                Response = "I'm here to help with LC process questions — like your pending approvals, issued or expiring LCs, amendment history, invoice status, payment tracking, and other trade finance activities. What would you like to know about your letters of credit?",
                 Data = [],
                 SessionId = request.SessionId ?? Guid.NewGuid().ToString(),
                 Intent = "Unknown",
@@ -559,12 +563,12 @@ public class ChatService
 
                 return new ChatResponseDto
                 {
-                    Response      = $"I wasn't able to generate a safe SQL query for that question. {genResult.Error}. Please try rephrasing.",
+                    Response      = "I'm here to help with LC process questions — things like pending approvals, issued or expiring LCs, amendment history, invoice status, and trade finance data. Could you try rephrasing, or ask something about your letters of credit?",
                     Data          = [],
                     SessionId     = sessionId,
                     Intent        = intent,
                     ResponseType  = "text_only",
-                    ResponseLabel = "Query generation failed",
+                    ResponseLabel = "Out of scope",
                     IsTextToSql   = true
                 };
             }
@@ -712,17 +716,34 @@ public class ChatService
             });
 
         // ── AI natural language summary ────────────────────────────────────────
+        ClarificationDto? clarification = null;
+        string[] suggestedQuestions = [];
         string aiResponse;
         if (dbRows.Count == 0)
         {
-            aiResponse   = BuildNoResultsMessage(entities);
-            responseType = "text_only";
+            clarification = await _clarificationService.DetectAsync(
+                request.Message, entities, userId, cancellationToken);
+
+            if (clarification is not null)
+            {
+                aiResponse   = $"I couldn't find any data for \"{clarification.UnrecognisedValue}\". Did you mean one of these?";
+                responseType = "clarification";
+            }
+            else
+            {
+                aiResponse   = BuildNoResultsMessage(entities);
+                responseType = "text_only";
+            }
         }
         else
         {
-            // Pass cancellationToken so Azure OpenAI response generation stops
-            // immediately if the client has already disconnected.
-            aiResponse = await _aiResponse.GenerateResponseAsync(request.Message, dbRows, cancellationToken: cancellationToken);
+            // Run AI summary and suggested questions in parallel for zero added latency.
+            var aiResponseTask  = _aiResponse.GenerateResponseAsync(request.Message, dbRows, cancellationToken: cancellationToken);
+            var suggestionsTask = _suggestedQuestionsService.GenerateAsync(request.Message, responseType, dbRows.Cast<object>(), cancellationToken);
+            await Task.WhenAll(aiResponseTask, suggestionsTask);
+            aiResponse         = aiResponseTask.Result;
+            suggestedQuestions = suggestionsTask.Result;
+
             var lower = aiResponse.Trim().ToLowerInvariant();
             if (lower.StartsWith("no records") || lower.StartsWith("no data"))
                 aiResponse = $"Found {dbRows.Count} record(s) matching your query.";
@@ -757,15 +778,17 @@ public class ChatService
 
         var finalResponse = new ChatResponseDto
         {
-            Response      = aiResponse,
-            Data          = dbRows,
-            SessionId     = sessionId,
-            ExecutedQuery = executedSql,
-            Intent        = intent,
-            ResponseType  = responseType,
-            ResponseLabel = responseLabel,
-            IsTextToSql   = isTextToSql,
-            QueryType     = queryType
+            Response           = aiResponse,
+            Data               = dbRows,
+            SessionId          = sessionId,
+            ExecutedQuery      = executedSql,
+            Intent             = intent,
+            ResponseType       = responseType,
+            ResponseLabel      = responseLabel,
+            IsTextToSql        = isTextToSql,
+            QueryType          = queryType,
+            SuggestedQuestions = suggestedQuestions,
+            Clarification      = clarification
         };
 
         if (dbRows.Count > 0

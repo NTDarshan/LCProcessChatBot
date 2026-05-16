@@ -34,12 +34,19 @@
       <!-- ── Smart data widget ──────────────────────────────────────── -->
       @if (msg.role === 'assistant') {
 
-        @if (isEmptyResult) {
+        @if (isEmptyResult && !msg.clarification) {
           <app-lc-empty-state [intent]="msg.intent ?? ''" />
 
-        } @else if (rows.length > 0) {
+        } @else if (rows.length > 0 || effectiveResponseType === 'clarification') {
 
           @switch (effectiveResponseType) {
+
+            @case ('clarification') {
+              <app-lc-clarification
+                [clarification]="msg.clarification!"
+                [originalQuestion]="msg.content"
+                (optionSelected)="handleClarification($event)" />
+            }
 
 
             @case ('metric_cards') {
@@ -112,12 +119,22 @@
 
           }
 
-          @if (followUpChips.length > 0) {
-            <div class="followup-chips">
-              @for (chip of followUpChips; track chip) {
-                <button class="chip-btn" (click)="sendFollowUp(chip)">{{ chip }}</button>
-              }
-            </div>
+          @if (msg.role === 'assistant' &&
+               msg.responseType !== 'streaming' &&
+               msg.responseType !== 'text_only') {
+            @if (msg.suggestedQuestions === undefined) {
+              <div class="followup-chips">
+                <div class="chip-skeleton"></div>
+                <div class="chip-skeleton"></div>
+                <div class="chip-skeleton"></div>
+              </div>
+            } @else if (followUpChips.length > 0) {
+              <div class="followup-chips">
+                @for (chip of followUpChips; track chip) {
+                  <button class="chip-btn" (click)="sendFollowUp(chip)">{{ chip }}</button>
+                }
+              </div>
+            }
           }
         }
       }

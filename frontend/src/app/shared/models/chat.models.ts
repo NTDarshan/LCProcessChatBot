@@ -1,6 +1,13 @@
 export type MessageRole = 'user' | 'assistant';
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
+export interface Clarification {
+  entityType: string;           // "bank" | "customer" | "lc_number"
+  unrecognisedValue: string;
+  availableOptions: string[];
+  questionTemplate: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -25,6 +32,10 @@ export interface Message {
   isTextToSql?: boolean;
   /** AI query classification: "list"|"aggregate"|"single_stat"|"timeline"|"comparison"|"trend"|"correlation"|"risk"|"kpi"|"heatmap" */
   queryType?: string | null;
+  /** AI-generated follow-up questions. undefined = not yet received, [] = none. */
+  suggestedQuestions?: string[];
+  /** Populated when the user's entity was not found in the database. */
+  clarification?: Clarification;
 }
 
 export interface ChatSession {
@@ -72,6 +83,8 @@ export interface ChatResponse {
   isTextToSql?: boolean;
   /** AI query classification from backend. */
   queryType?: string | null;
+  suggestedQuestions?: string[];
+  clarification?: Clarification;
 }
 
 export interface ProcessingStageUpdate {

@@ -2,6 +2,7 @@ import { Component, input, output, signal, ChangeDetectionStrategy, inject } fro
 import { CommonModule } from '@angular/common';
 import { Message } from '../../../../shared/models/chat.models';
 import { MessageStore } from '../../services/message.store';
+import { LcClarificationComponent } from '../lc-clarification/lc-clarification.component';
 import { LcTableComponent }               from '../lc-table/lc-table.component';
 import { LcMetricCardsComponent }         from '../lc-metric-cards/lc-metric-cards.component';
 import { LcBankChartComponent }           from '../lc-bank-chart/lc-bank-chart.component';
@@ -53,6 +54,7 @@ const EMPTY_PHRASES = ['no data found', 'no records found', 'no results'];
     LcRiskScorecardComponent,
     LcKpiStripComponent,
     LcExpiryHeatmapComponent,
+    LcClarificationComponent,
   ],
   templateUrl: './chat-message.component.html',
   styleUrl:    './chat-message.component.scss',
@@ -100,6 +102,8 @@ export class ChatMessageComponent {
 
   /** Routes to richer components based on response type and query classification. */
   get effectiveResponseType(): string {
+    if (this.message().clarification) return 'clarification';
+
     const base = this.message().responseType ?? 'table';
     const data = this.rows;
     const queryType = this.message().queryType;
@@ -119,9 +123,12 @@ export class ChatMessageComponent {
     return base;
   }
 
-  /** Follow-up chip suggestions keyed by effective response type. */
   get followUpChips(): string[] {
-    return FOLLOW_UP_MAP[this.effectiveResponseType] ?? [];
+    return this.message().suggestedQuestions ?? [];
+  }
+
+  handleClarification(question: string): void {
+    this.store.sendMessage(question);
   }
 
   get shouldHideStreamingPlaceholder(): boolean {
@@ -133,19 +140,3 @@ export class ChatMessageComponent {
   }
 }
 
-const FOLLOW_UP_MAP: Record<string, string[]> = {
-  'line_chart':     ['Show as area chart ↗', 'Show by bank ↗', 'Compare years ↗'],
-  'radar_chart':    ['Show as bar chart ↗', 'Show BNP details ↗', 'Show KBC details ↗'],
-  'scatter_chart':  ['Show high value LCs ↗', 'Show delayed LCs ↗'],
-  'kpi_strip':      ['Show active LCs ↗', 'Show expiring LCs ↗', 'Show status breakdown ↗'],
-  'risk_scorecard': ['Show critical LCs ↗', 'Show expired LCs ↗', 'Show overdue LCs ↗'],
-  'expiry_heatmap': ['Show expiring this month ↗', 'Show expired LCs ↗'],
-  'mixed_chart':    ['Show trend by bank ↗', 'Show this year vs last year ↗'],
-  'table':          ['Show status breakdown ↗', 'Show by bank ↗', 'Filter by expiry ↗'],
-  'bank_chart':     ['Compare top 2 banks ↗', 'Show issued LCs ↗', 'Show pending approvals ↗'],
-  'metric_cards':   ['Show as chart ↗', 'Show full list ↗', 'Filter by bank ↗'],
-  'approval_list':  ['Show all pending ↗', 'Show expired LCs ↗', 'Show by bank ↗'],
-  'timeline':       ['Show all amendments ↗', 'Show invoice status ↗'],
-  'detail_card':    ['Show all issued LCs ↗', 'Show LC history ↗', 'Show invoice for this LC ↗'],
-  'comparison':     ['Add a third bank ↗', 'Show issued only ↗', 'Show by customer ↗'],
-};

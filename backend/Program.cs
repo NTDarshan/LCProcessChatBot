@@ -103,6 +103,8 @@ builder.Services.AddScoped<SchemaProvider>();
 builder.Services.AddScoped<QueryRuleProvider>();
 builder.Services.AddScoped<ResponseTypeGuideProvider>();
 builder.Services.AddScoped<SqlGenerationService>();
+builder.Services.AddScoped<SuggestedQuestionsService>();
+builder.Services.AddScoped<ClarificationService>();
 builder.Services.AddScoped<ChatService>();
 
 var app = builder.Build();

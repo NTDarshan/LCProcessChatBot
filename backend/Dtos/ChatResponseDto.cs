@@ -33,4 +33,10 @@ public class ChatResponseDto
 
     // AI-classified query type: "list"|"aggregate"|"single_stat"|"timeline"|"comparison"|"trend"|"correlation"|"risk"|"kpi"|"heatmap"
     public string? QueryType { get; set; }
+
+    // AI-generated follow-up questions shown as chips below the response
+    public string[] SuggestedQuestions { get; set; } = [];
+
+    // Populated when the user's entity (bank/customer/LC number) was not found in the DB
+    public ClarificationDto? Clarification { get; set; }
 }

@@ -131,6 +131,8 @@ export class MessageStore implements OnDestroy {
             chartType: dto.chartType ?? null,
             isTextToSql: dto.isTextToSql ?? false,
             queryType: dto.queryType ?? null,
+            suggestedQuestions: dto.suggestedQuestions ?? [],
+            clarification: dto.clarification ?? undefined,
           };
           return copy;
         });
@@ -474,6 +476,8 @@ export class MessageStore implements OnDestroy {
           chartType: resp.chartType ?? null,
           isTextToSql: resp.isTextToSql ?? false,
           queryType: resp.queryType ?? null,
+          suggestedQuestions: resp.suggestedQuestions ?? [],
+          clarification: resp.clarification ?? undefined,
         };
         return copy;
       });

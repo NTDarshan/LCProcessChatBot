@@ -51,9 +51,8 @@ public class DomainValidationService
         "finance", "trade", "utilisation", "utilization", "limit",
         "history", "lifecycle", "audit", "timeline", "activity",
 
-        // ── Question starters that always pair with LC context
-        // (allow "show", "how many", "which lcs" etc.)
-        "show", "which", "what", "how many", "give", "get", "find", "list"
+        // Note: generic question starters ("what", "show", "list", etc.) are intentionally
+        // excluded — any valid LC query will also contain a real LC term above.
     };
 
     // Returns true only if the message is LC-domain relevant

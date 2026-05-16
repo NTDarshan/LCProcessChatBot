@@ -238,3 +238,16 @@
     color: #4f46e5;
   }
 }
+
+.chip-skeleton {
+  width: 120px;
+  height: 26px;
+  border-radius: 99px;
+  background: var(--color-background-secondary, #f3f4f6);
+  animation: skeletonPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
