@@ -114,34 +114,43 @@ export class MessageStore implements OnDestroy {
 
         if (dto.sessionId) this.sessionId.set(dto.sessionId);
 
-        this.messages.update((list) => {
-          if (idx < 0 || idx >= list.length) return list;
-          const copy    = [...list];
-          const current = copy[idx];
-          copy[idx] = {
-            id: current.id,
-            role: 'assistant',
-            content: dto.response ?? '',
-            timestamp: new Date(),
-            executedQuery: dto.executedQuery,
-            showQuery: false,
-            data: dto.data as Record<string, unknown>[],
-            intent: dto.intent,
-            responseType: dto.responseType,
-            chartType: dto.chartType ?? null,
-            isTextToSql: dto.isTextToSql ?? false,
-            queryType: dto.queryType ?? null,
-            suggestedQuestions: dto.suggestedQuestions ?? [],
-            clarification: dto.clarification ?? undefined,
-          };
-          return copy;
-        });
+        // Defer chart/table rendering to the next animation frame.
+        // This prevents the chart library's synchronous rendering from blocking
+        // the event loop and causing the 1-2 second delay users perceive.
+        // The streamed text is already on screen; deferring the data allows
+        // the browser to stabilize before expensive chart rendering starts.
+        requestAnimationFrame(() => {
+          this.messages.update((list) => {
+            if (idx < 0 || idx >= list.length) return list;
+            const copy    = [...list];
+            const current = copy[idx];
+            copy[idx] = {
+              id: current.id,
+              role: 'assistant',
+              content: dto.response ?? '',
+              timestamp: new Date(),
+              executedQuery: dto.executedQuery,
+              showQuery: false,
+              data: dto.data as Record<string, unknown>[],
+              intent: dto.intent,
+              responseType: dto.responseType,
+              chartType: dto.chartType ?? null,
+              isTextToSql: dto.isTextToSql ?? false,
+              queryType: dto.queryType ?? null,
+              suggestedQuestions: dto.suggestedQuestions ?? [],
+              clarification: dto.clarification ?? undefined,
+            };
+            return copy;
+          });
 
-        this._resetStreamingState();
-        this.lastResponseData.set(dto.data ?? []);
-        this.showRightPanel.set(true);
-        this.loadSessions();
-        this.scrollToBottom();
+          this._resetStreamingState();
+          this.lastResponseData.set(dto.data ?? []);
+          this.showRightPanel.set(true);
+          this.scrollToBottom();
+
+          // Defer session loading so chart rendering completes first.
+          setTimeout(() => this.loadSessions(), 0);
+        });
       });
 
     this.signalR.chatError$
@@ -459,32 +468,37 @@ export class MessageStore implements OnDestroy {
         this.sessionId.set(resp.sessionId);
       }
 
-      this.messages.update((list) => {
-        if (assistantIdx < 0 || assistantIdx >= list.length) return list;
-        const copy    = [...list];
-        const current = copy[assistantIdx];
-        copy[assistantIdx] = {
-          id: current.id,
-          role: 'assistant',
-          content: resp.response,
-          timestamp: new Date(),
-          executedQuery: resp.executedQuery,
-          showQuery: false,
-          data: resp.data as Record<string, unknown>[],
-          intent: resp.intent,
-          responseType: resp.responseType,
-          chartType: resp.chartType ?? null,
-          isTextToSql: resp.isTextToSql ?? false,
-          queryType: resp.queryType ?? null,
-          suggestedQuestions: resp.suggestedQuestions ?? [],
-          clarification: resp.clarification ?? undefined,
-        };
-        return copy;
-      });
+      // Defer chart/table rendering to the next animation frame for instant-feeling UX.
+      requestAnimationFrame(() => {
+        this.messages.update((list) => {
+          if (assistantIdx < 0 || assistantIdx >= list.length) return list;
+          const copy    = [...list];
+          const current = copy[assistantIdx];
+          copy[assistantIdx] = {
+            id: current.id,
+            role: 'assistant',
+            content: resp.response,
+            timestamp: new Date(),
+            executedQuery: resp.executedQuery,
+            showQuery: false,
+            data: resp.data as Record<string, unknown>[],
+            intent: resp.intent,
+            responseType: resp.responseType,
+            chartType: resp.chartType ?? null,
+            isTextToSql: resp.isTextToSql ?? false,
+            queryType: resp.queryType ?? null,
+            suggestedQuestions: resp.suggestedQuestions ?? [],
+            clarification: resp.clarification ?? undefined,
+          };
+          return copy;
+        });
 
-      this.lastResponseData.set(resp.data ?? []);
-      this.showRightPanel.set(true);
-      this.loadSessions();
+        this.lastResponseData.set(resp.data ?? []);
+        this.showRightPanel.set(true);
+
+        // Defer session loading so chart rendering completes first.
+        setTimeout(() => this.loadSessions(), 0);
+      });
     } catch (err) {
       // AbortError means the user clicked stop or sent a new message – not an error.
       if (err instanceof Error && err.name === 'AbortError') {

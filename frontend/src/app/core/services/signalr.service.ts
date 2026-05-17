@@ -73,8 +73,8 @@ export class SignalRService {
       .configureLogging(LogLevel.Warning)
       .build();
 
-    this.connection.on('ReceiveChunk', (chunk: string) => {
-      this.chatChunk$.next(chunk);
+    this.connection.on('ReceiveToken', (token: string) => {
+      this.chatChunk$.next(token);
     });
 
     this.connection.on('MessageComplete', (dto: any) => {

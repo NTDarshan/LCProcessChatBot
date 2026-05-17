@@ -50,6 +50,16 @@ public class AiResponseService
         IEnumerable<(string Role, string Content)>? conversationHistory = null,
         CancellationToken cancellationToken = default)
     {
+        return await GenerateResponseAsync(userQuestion, dbResult, conversationHistory, null, cancellationToken);
+    }
+
+    public async Task<string> GenerateResponseAsync(
+        string userQuestion,
+        object dbResult,
+        IEnumerable<(string Role, string Content)>? conversationHistory,
+        Func<string, Task>? onTokenReceived,
+        CancellationToken cancellationToken = default)
+    {
         var jsonData = JsonSerializer.Serialize(dbResult, new JsonSerializerOptions
         {
             WriteIndented    = false,
@@ -167,16 +177,35 @@ public class AiResponseService
 
         try
         {
-            // Pass cancellationToken: if the HTTP request is aborted mid-generation,
-            // the Azure OpenAI call is cancelled immediately to stop token spend.
-            var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
-            return response.Value.Content[0].Text.Trim();
+            var fullResponse = new System.Text.StringBuilder();
+
+            if (onTokenReceived is not null)
+            {
+                await foreach (var update in _chatClient.CompleteChatStreamingAsync(messages, cancellationToken: cancellationToken))
+                {
+                    if (update.ContentUpdate.Count > 0)
+                    {
+                        var token = update.ContentUpdate[0].Text;
+                        if (!string.IsNullOrEmpty(token))
+                        {
+                            fullResponse.Append(token);
+                            await onTokenReceived(token);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                var response = await _chatClient.CompleteChatAsync(messages, cancellationToken: cancellationToken);
+                fullResponse.Append(response.Value.Content[0].Text);
+            }
+
+            return fullResponse.ToString().Trim();
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is expected behaviour – log informational, not error.
             _logger.LogInformation("AI response generation cancelled by client disconnect");
-            throw; // Re-throw so the pipeline unwinds cleanly
+            throw;
         }
     }
 }

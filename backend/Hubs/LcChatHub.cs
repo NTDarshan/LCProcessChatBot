@@ -84,11 +84,33 @@ public class LcChatHub : Hub
             }
         }
 
+        // Token streaming callback – send each token from LLM to client as it arrives.
+        async Task OnTokenReceivedAsync(string token)
+        {
+            // Stop if connection is gone.
+            if (cancellationToken.IsCancellationRequested) return;
+
+            try
+            {
+                await Clients.Caller.SendAsync("ReceiveToken", token, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation(
+                    "Token stream cancelled | ConnectionId: {ConnectionId}",
+                    Context.ConnectionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to send token to {ConnectionId}", Context.ConnectionId);
+            }
+        }
+
         try
         {
-            // Pass cancellationToken into ChatService so the full pipeline
-            // (OpenAI, SQL, history persist) cancels when the connection drops.
-            var result = await _chatService.ProcessAsync(request, EmitStageAsync, cancellationToken);
+            // Pass cancellationToken and token streaming callback into ChatService.
+            // Tokens from Azure OpenAI are streamed directly to the client in real-time.
+            var result = await _chatService.ProcessAsync(request, EmitStageAsync, OnTokenReceivedAsync, cancellationToken);
 
             // text_only responses signal a business-rule rejection (domain guard, errors).
             if (string.Equals(result.ResponseType, "text_only", StringComparison.OrdinalIgnoreCase))
@@ -99,28 +121,8 @@ public class LcChatHub : Hub
                 return;
             }
 
-            // Streaming word-by-word rendering loop.
-            // Check cancellationToken on EVERY iteration so the loop stops the instant
-            // the client disconnects – prevents stale chunks from being sent.
-            var words = (result.Response ?? string.Empty)
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var word in words)
-            {
-                // Stop immediately if the connection was aborted mid-stream.
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    _logger.LogInformation(
-                        "Streaming loop stopped due to client disconnect | ConnectionId: {ConnectionId}",
-                        Context.ConnectionId);
-                    return;
-                }
-
-                await Clients.Caller.SendAsync("ReceiveChunk", word + " ", cancellationToken: cancellationToken);
-                await Task.Delay(30, cancellationToken);
-            }
-
-            // Final payload – only send if connection is still alive.
+            // Send complete response payload (data, charts, metadata).
+            // Response text was already streamed token-by-token above via OnTokenReceivedAsync.
             if (!cancellationToken.IsCancellationRequested)
                 await Clients.Caller.SendAsync("MessageComplete", result, cancellationToken: cancellationToken);
         }

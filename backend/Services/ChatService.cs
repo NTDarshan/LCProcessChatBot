@@ -76,21 +76,37 @@ public class ChatService
     // Main entry point – no cancellation token (HTTP fallback path)
     public async Task<ChatResponseDto> ProcessAsync(ChatRequestDto request)
     {
-        return await ProcessAsync(request, null, CancellationToken.None);
+        return await ProcessAsync(request, null, null, CancellationToken.None);
     }
 
     // Overload with stage updates only (used internally / SignalR path without token)
     public async Task<ChatResponseDto> ProcessAsync(ChatRequestDto request, Func<ProcessingStageUpdateDto, Task>? stageUpdate)
     {
-        return await ProcessAsync(request, stageUpdate, CancellationToken.None);
+        return await ProcessAsync(request, stageUpdate, null, CancellationToken.None);
     }
 
-    // Primary overload – accepts both stage callback and cancellation token.
+    // Overload with cancellation token only (HTTP controller path)
+    public async Task<ChatResponseDto> ProcessAsync(ChatRequestDto request, CancellationToken cancellationToken)
+    {
+        return await ProcessAsync(request, null, null, cancellationToken);
+    }
+
+    // Overload with stage updates and token streaming
+    public async Task<ChatResponseDto> ProcessAsync(
+        ChatRequestDto request,
+        Func<ProcessingStageUpdateDto, Task>? stageUpdate,
+        Func<string, Task>? onTokenReceived)
+    {
+        return await ProcessAsync(request, stageUpdate, onTokenReceived, CancellationToken.None);
+    }
+
+    // Primary overload – accepts stage callback, token streaming callback, and cancellation token.
     // cancellationToken: should be HttpContext.RequestAborted so the entire
     // pipeline unwinds cooperatively when the client disconnects.
     public async Task<ChatResponseDto> ProcessAsync(
         ChatRequestDto request,
         Func<ProcessingStageUpdateDto, Task>? stageUpdate,
+        Func<string, Task>? onTokenReceived,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Query | Email: {Email} | Message: {Message}",request.UserEmail, request.Message);
@@ -737,8 +753,8 @@ public class ChatService
         }
         else
         {
-            // Run AI summary and suggested questions in parallel for zero added latency.
-            var aiResponseTask  = _aiResponse.GenerateResponseAsync(request.Message, dbRows, cancellationToken: cancellationToken);
+            // Run AI summary (with streaming) and suggested questions in parallel.
+            var aiResponseTask  = _aiResponse.GenerateResponseAsync(request.Message, dbRows, null, onTokenReceived, cancellationToken);
             var suggestionsTask = _suggestedQuestionsService.GenerateAsync(request.Message, responseType, dbRows.Cast<object>(), cancellationToken);
             await Task.WhenAll(aiResponseTask, suggestionsTask);
             aiResponse         = aiResponseTask.Result;

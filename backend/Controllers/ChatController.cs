@@ -35,7 +35,7 @@ public class ChatController : ControllerBase
         {
             // Pass HttpContext.RequestAborted into the service layer so every
             // downstream async call participates in cooperative cancellation.
-            var result = await _chatService.ProcessAsync(request, null, cancellationToken);
+            var result = await _chatService.ProcessAsync(request, cancellationToken);
             return Ok(result);
         }
         catch (OperationCanceledException)
